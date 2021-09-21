@@ -17,4 +17,4 @@ while True:
     o3d.visualization.draw_geometries([pcd])
     print("Total: ", len(pcd.points))
 
-    which += 1  # TODO fare subsampling della parziale
+    which += 1
