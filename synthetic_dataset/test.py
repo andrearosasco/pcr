@@ -11,8 +11,10 @@ which = 0
 while True:
     pcd = o3d.io.read_point_cloud("dataset/" + str(which) + "_partial-pc.pcd", format='pcd')
     o3d.visualization.draw_geometries([pcd])
+    print("Partial: ", len(pcd.points))
 
     pcd = o3d.io.read_point_cloud("dataset/" + str(which) + "_complete-pc.pcd", format='pcd')
     o3d.visualization.draw_geometries([pcd])
+    print("Total: ", len(pcd.points))
 
-    which += 1
+    which += 1  # TODO fare subsampling della parziale
