@@ -1,9 +1,10 @@
-from open3d.cpu.pybind.geometry import PointCloud
-from open3d.cpu.pybind.utility import Vector3dVector
+from open3d.open3d.geometry import PointCloud
+from open3d.open3d.utility import Vector3dVector
+from open3d.open3d.visualization import draw_geometries
+
 from datasets.ShapeNet55Dataset import ShapeNet
 from models.PoinTr import PoinTr
 import torch
-from open3d.visualization import draw_geometries
 import numpy as np
 from utils import misc
 
@@ -57,7 +58,7 @@ c = model_config()
 model = PoinTr(c)
 
 # Load checkpoint
-state_dict = torch.load("./pretrained/PoinTr_ShapeNet55.pth", map_location='cpu')  # dict of model info
+state_dict = torch.load("C:\\Users\\arosasco\\PycharmProjects\\pcr\\pointr\\pointr_training_from_scratch_c55_best.pth", map_location='cpu')  # dict of model info
 base_ckpt = {k.replace("module.", ""): v for k, v in state_dict['model'].items()}
 model.load_state_dict(base_ckpt)
 model.cuda()

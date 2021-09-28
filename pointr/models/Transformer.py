@@ -19,13 +19,10 @@ def get_knn_index(coor_q, coor_k=None):
     num_points_k = coor_k.size(2)
 
     with torch.no_grad():
-        # nbrs = knn.fit(coor_k[0].cpu().T)
-        # _, idx = nbrs.kneighbors(coor_q[0].cpu().T)
-        # idx = torch.tensor(idx).to('cuda')
         dist = torch.cdist(coor_k[0].T, coor_q[0].T)
         _, idx = torch.topk(dist, dim=0, k=8, largest=False)
-        idx = idx.T.contiguous()
-        # _, idx = knn(coor_k, coor_q)  # bs k np
+        idx = idx.unsqueeze(0)
+
         idx_base = torch.arange(0, batch_size, device=coor_q.device).view(-1, 1, 1) * num_points_k
         idx = idx + idx_base
         idx = idx.contiguous()
