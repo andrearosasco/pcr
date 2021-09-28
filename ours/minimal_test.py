@@ -3,6 +3,8 @@ from open3d.open3d.utility import Vector3dVector
 from open3d.open3d.visualization import draw_geometries
 import open3d
 from torch import randn_like
+from torch.nn import BCELoss, Sigmoid
+
 from datasets.ShapeNet55Dataset import ShapeNet
 from models.PoinTr import Hypernetwork, ImplicitFunction
 import torch
@@ -64,7 +66,7 @@ model = Hypernetwork(c)
 # state_dict = torch.load("C:\\Users\\arosasco\\PycharmProjects\\pcr\\pointr\\pointr_training_from_scratch_c55_best.pth", map_location='cpu')  # dict of model info
 # base_ckpt = {k.replace("module.", ""): v for k, v in state_dict['model'].items()}
 # model.load_state_dict(base_ckpt)
-model.cuda()
+model.to(c.device)
 # model.eval()
 
 def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0.1):  # 1 2048 3
@@ -76,8 +78,8 @@ def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0
     # open3d.open3d.visualization.draw_geometries([voxel_grid])
 
     # ORIGINAL PC
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(xyz)
+    # pcd = open3d.geometry.PointCloud()
+    # pcd.points = open3d.utility.Vector3dVector(xyz)
     # open3d.open3d.visualization.draw_geometries([pcd])
 
     # WITH GAUSSIAN NOISE
@@ -104,7 +106,7 @@ def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0
         else:
             colors[i] = np.array([0, 1, 0])
     pcd.colors = open3d.utility.Vector3dVector(colors)
-    open3d.open3d.visualization.draw_geometries([pcd])
+    # open3d.open3d.visualization.draw_geometries([pcd])
 
     t = 0
     f = 0
@@ -117,28 +119,35 @@ def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0
 
     return np.array(pcd.points), np.array(results)
 
+loss = BCELoss()
+m = Sigmoid()
 
 with torch.no_grad():
     for idx, (taxonomy_ids, model_ids, data) in enumerate(dataset):
         taxonomy_id = taxonomy_ids[0] if isinstance(taxonomy_ids[0], str) else taxonomy_ids[0].item()
         model_id = model_ids[0]
 
-        gt = data.cuda()
+        gt = data.to(c.device)
         choice = [torch.Tensor([1, 1, 1]), torch.Tensor([1, 1, -1]), torch.Tensor([1, -1, 1]), torch.Tensor([-1, 1, 1]),
                   torch.Tensor([-1, -1, 1]), torch.Tensor([-1, 1, -1]), torch.Tensor([1, -1, -1]),
                   torch.Tensor([-1, -1, -1])]
         num_crop = int(n_points * crop_ratio["hard"])
+
+        x, y = sample_point_cloud(data)
+        x, y = torch.tensor(x).to(c.device).float(), torch.tensor(y).to(c.device)
+
         for item in choice:
             partial, _ = misc.seprate_point_cloud(gt.unsqueeze(0), n_points, num_crop, fixed_points=item)
             partial = misc.fps(partial, 2048)
 
             start = time.time()
+            # partial = torch.tensor(partial, requires_grad=True)
             ret = model(partial)
             giulio_l_implicit_function = ImplicitFunction(ret)
 
-            for x, y in points:
-                pred = giulio_l_implicit_function(x)
-                loss(pred, y).backward()
+            pred = giulio_l_implicit_function(x)
+            loss(m(pred).squeeze(), y.float()).backward()  # .backward()
+
 
             end = time.time()
 
