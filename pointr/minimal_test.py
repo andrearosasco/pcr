@@ -59,7 +59,7 @@ c = model_config()
 model = PoinTr(c)
 
 # Load checkpoint
-state_dict = torch.load("C:\\Users\\arosasco\\PycharmProjects\\pcr\\pointr\\pointr_training_from_scratch_c55_best.pth", map_location='cpu')  # dict of model info
+state_dict = torch.load("pretrained/PoinTr_ShapeNet55.pth")  # dict of model info
 base_ckpt = {k.replace("module.", ""): v for k, v in state_dict['model'].items()}
 model.load_state_dict(base_ckpt)
 model.cuda()
