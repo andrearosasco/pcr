@@ -6,6 +6,7 @@ import torch
 from open3d.visualization import draw_geometries
 import numpy as np
 from utils import misc
+import time
 
 
 def draw_point_cloud(x):
@@ -72,15 +73,21 @@ with torch.no_grad():
         choice = [torch.Tensor([1, 1, 1]), torch.Tensor([1, 1, -1]), torch.Tensor([1, -1, 1]), torch.Tensor([-1, 1, 1]),
                   torch.Tensor([-1, -1, 1]), torch.Tensor([-1, 1, -1]), torch.Tensor([1, -1, -1]),
                   torch.Tensor([-1, -1, -1])]
-        num_crop = int(n_points * crop_ratio["easy"])
+        num_crop = int(n_points * crop_ratio["hard"])
         for item in choice:
             partial, _ = misc.seprate_point_cloud(gt.unsqueeze(0), n_points, num_crop, fixed_points=item)
             partial = misc.fps(partial, 2048)
+
+            start = time.time()
             ret = model(partial)
+            end = time.time()
+
+            print(end-start)
+
             coarse_points = ret[0]
             dense_points = ret[1]
 
-            draw_point_cloud(gt)
-            draw_point_cloud(partial)
-            draw_point_cloud(coarse_points)
-            draw_point_cloud(dense_points)
+            # draw_point_cloud(gt)
+            # draw_point_cloud(partial)
+            # draw_point_cloud(coarse_points)
+            # draw_point_cloud(dense_points)
