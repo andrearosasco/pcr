@@ -73,6 +73,7 @@ class DGCNN_Grouper(nn.Module):
             idx_base = torch.arange(0, batch_size, device=x_q.device).view(-1, 1, 1) * num_points_k
             idx = idx + idx_base
             idx = idx.view(-1)
+
         num_dims = x_k.size(1)
         x_k = x_k.transpose(2, 1).contiguous()
         feature = x_k.view(batch_size * num_points_k, -1)[idx, :]
@@ -82,7 +83,6 @@ class DGCNN_Grouper(nn.Module):
         return feature
 
     def forward(self, x):  # x: B 3 2048
-
         # x: bs, 3, np
 
         # bs 3 N(128)   bs C(224)128 N(128)
