@@ -67,7 +67,7 @@ class DGCNN_Grouper(nn.Module):
         with torch.no_grad():
             nbrs = knn.fit(coor_k[0].cpu().T)
             _, idx = nbrs.kneighbors(coor_q[0].cpu().T)
-            idx = torch.tensor(idx).to('cuda5')
+            idx = torch.tensor(idx).to('cuda')
             # _, idx = knn(coor_k, coor_q)  # bs k np
             assert idx.shape[1] == k
             idx_base = torch.arange(0, batch_size, device=x_q.device).view(-1, 1, 1) * num_points_k
