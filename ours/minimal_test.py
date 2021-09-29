@@ -28,12 +28,14 @@ with torch.no_grad():
                   torch.Tensor([-1, -1, -1])]
         num_crop = int(DataConfig().N_POINTS * crop_ratio[TrainConfig().difficulty])
 
-        x, y = sample_point_cloud(data)
+        x, y = sample_point_cloud(data, TrainConfig().voxel_size,
+                                  TrainConfig().noise_rate,
+                                  TrainConfig().percentage_sampled)
         x, y = torch.tensor(x).to(TrainConfig().device).float(), torch.tensor(y).to(TrainConfig().device)
 
         for item in choice:
             partial, _ = misc.seprate_point_cloud(gt.unsqueeze(0), DataConfig().N_POINTS, num_crop, fixed_points=item)
-            partial = misc.fps(partial, 2048)
+            partial = misc.fps(partial, ModelConfig().PC_SIZE)
 
             start = time.time()
             # partial = torch.tensor(partial, requires_grad=True)

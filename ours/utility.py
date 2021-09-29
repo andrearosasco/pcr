@@ -23,6 +23,7 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     NAME = "PoinTr"
+    PC_SIZE = 2048
     knn_layer = 1
     num_pred = 6144
     num_query = 96
@@ -34,6 +35,9 @@ class ModelConfig:
 class TrainConfig:
     difficulty = "easy"
     device = device
+    voxel_size = 0.1
+    noise_rate = 0.1
+    percentage_sampled = 0.1
 
 
 def draw_point_cloud(x):
