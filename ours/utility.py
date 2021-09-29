@@ -8,9 +8,12 @@ from dataclasses import dataclass
 from torch import randn_like
 import os
 
+
+# PARAMETERS ###########################################################################################################
+
 device = "cuda"
 
-print(os.getcwd())
+
 @dataclass
 class DataConfig:
     DATA_PATH = os.path.join("data", "ShapeNet55-34", "ShapeNet-55")
@@ -38,6 +41,8 @@ class TrainConfig:
     voxel_size = 0.1
     noise_rate = 0.1
     percentage_sampled = 0.1
+
+# USEFUL FUNCTION ######################################################################################################
 
 
 def draw_point_cloud(x):

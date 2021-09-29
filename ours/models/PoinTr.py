@@ -51,14 +51,15 @@ class Hypernetwork(nn.Module):
         return impl
 
 
-class ImplicitFunction:
+class ImplicitFunction(nn.Module):
 
     def __init__(self, params):
+        super().__init__()
         self.params = params
         self.relu = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.5)
 
-    def __call__(self, points):
+    def forward(self, points):
         x = points
 
         weights, scales, biases = self.params[0]
