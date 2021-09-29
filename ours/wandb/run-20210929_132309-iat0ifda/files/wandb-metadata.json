@@ -1,0 +1,24 @@
+{
+    "os": "Windows-10-10.0.19041-SP0",
+    "python": "3.7.11",
+    "heartbeatAt": "2021-09-29T09:23:11.048591",
+    "startedAt": "2021-09-29T09:23:09.257659",
+    "docker": null,
+    "gpu": "NVIDIA GeForce GTX 1650 Ti",
+    "gpu_count": 1,
+    "cpu_count": 12,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "C:/Users/sberti/PycharmProjects/pcr/ours/minimal_test.py",
+    "codePath": "ours\\minimal_test.py",
+    "git": {
+        "remote": "https://github.com/andrearosasco/pcr.git",
+        "commit": "9d51fad912b4c2164afb513f6c2cf3342291f104"
+    },
+    "email": "berti.ste@hotmail.it",
+    "root": "C:/Users/sberti/PycharmProjects/pcr",
+    "host": "IITICUBLAP254",
+    "username": "sberti",
+    "executable": "C:\\Users\\sberti\\Miniconda3\\envs\\pcr\\python.exe"
+}

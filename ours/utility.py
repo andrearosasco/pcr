@@ -32,6 +32,7 @@ class ModelConfig:
     num_query = 96
     trans_dim = 384
     device = device
+    n_epoch = 5
 
 
 @dataclass
@@ -98,13 +99,13 @@ def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0
     pcd.colors = open3d.utility.Vector3dVector(colors)
     # open3d.open3d.visualization.draw_geometries([pcd])
 
-    t = 0
-    f = 0
-    for elem in results:
-        if elem:
-            t += 1
-        else:
-            f += 1
-    print("Found ", t, " points inside the voxels and ", f, " points outside the voxel")
+    # t = 0
+    # f = 0
+    # for elem in results:
+    #     if elem:
+    #         t += 1
+    #     else:
+    #         f += 1
+    # print("Found ", t, " points inside the voxels and ", f, " points outside the voxel")
 
     return np.array(pcd.points), np.array(results)
