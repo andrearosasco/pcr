@@ -1,143 +1,38 @@
-from open3d.open3d.geometry import PointCloud
-from open3d.open3d.utility import Vector3dVector
-from open3d.open3d.visualization import draw_geometries
-import open3d
-from torch import randn_like
 from torch.nn import BCELoss, Sigmoid
-
 from datasets.ShapeNet55Dataset import ShapeNet
 from models.PoinTr import Hypernetwork, ImplicitFunction
 import torch
-import numpy as np
 from utils import misc
 import time
-
-
-def draw_point_cloud(x):
-    x = x.cpu().squeeze()
-    pc = PointCloud()
-    pc.points = Vector3dVector(np.array(x))
-    draw_geometries([pc])
-
-
-crop_ratio = {
-    'easy': 1/4,
-    'median': 1/2,
-    'hard': 3/4
-}
-
+from utility import DataConfig, ModelConfig, TrainConfig, sample_point_cloud, crop_ratio
 
 # Load Dataset
-class AttrDict(dict):
-    def _init_(self, *args, **kwargs):
-        super(AttrDict, self)._init_(*args, **kwargs)
-        self._dict_ = self
+dataset = ShapeNet(DataConfig())
 
+# Load Model
+model = Hypernetwork(ModelConfig())
+model.to(TrainConfig().device)
 
-n_points = 8192
-dataset_name = "ShapeNet"
-
-class data_config:
-    def __init__(self):
-        self.DATA_PATH = 'C:/Users/arosasco/PycharmProjects/pcr/pointr/data/ShapeNet55-34/ShapeNet-55'
-        self.NAME = 'ShapeNet'
-        self.N_POINTS = 8192
-        self.subset = 'test'
-        self.PC_PATH = 'C:/Users/arosasco/PycharmProjects/pcr/pointr/data/ShapeNet55-34/shapenet_pc'
-
-
-c = data_config()
-dataset = ShapeNet(c)
-
-# Load model
-class model_config:
-    def __init__(self):
-        self.NAME = 'PoinTr'
-        self.knn_layer = 1
-        self.num_pred = 6144
-        self.num_query = 96
-        self.trans_dim = 384
-        self.device = 'cuda'
-
-c = model_config()
-model = Hypernetwork(c)
-
-# Load checkpoint
-# state_dict = torch.load("C:\\Users\\arosasco\\PycharmProjects\\pcr\\pointr\\pointr_training_from_scratch_c55_best.pth", map_location='cpu')  # dict of model info
-# base_ckpt = {k.replace("module.", ""): v for k, v in state_dict['model'].items()}
-# model.load_state_dict(base_ckpt)
-model.to(c.device)
-# model.eval()
-
-def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0.1):  # 1 2048 3
-    # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
-    # VOXEL
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(xyz)
-    voxel_grid = open3d.open3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
-    # open3d.open3d.visualization.draw_geometries([voxel_grid])
-
-    # ORIGINAL PC
-    # pcd = open3d.geometry.PointCloud()
-    # pcd.points = open3d.utility.Vector3dVector(xyz)
-    # open3d.open3d.visualization.draw_geometries([pcd])
-
-    # WITH GAUSSIAN NOISE
-    z = randn_like(xyz) * noise_rate
-    xyz = xyz + z
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(xyz)
-    # open3d.open3d.visualization.draw_geometries([pcd])
-
-    # WITH 10% UNIFORM RANDOM POINTS
-    k = int(len(xyz) * percentage_sampled)
-    random_points = torch.FloatTensor(k, 3).uniform_(-1, 1)
-    pcd = open3d.geometry.PointCloud()
-    xyz = torch.cat((xyz, random_points))
-    pcd.points = open3d.utility.Vector3dVector(xyz)
-    # open3d.open3d.visualization.draw_geometries([pcd])
-
-    # WITH LABEL
-    results = voxel_grid.check_if_included(open3d.utility.Vector3dVector(xyz))
-    colors = np.zeros((len(xyz), 3))
-    for i, value in enumerate(results):
-        if value:
-            colors[i] = np.array([0, 0, 1])
-        else:
-            colors[i] = np.array([0, 1, 0])
-    pcd.colors = open3d.utility.Vector3dVector(colors)
-    # open3d.open3d.visualization.draw_geometries([pcd])
-
-    t = 0
-    f = 0
-    for elem in results:
-        if elem:
-            t += 1
-        else:
-            f += 1
-    print("Found ", t, " points inside the voxels and ", f, " points outside the voxel")
-
-    return np.array(pcd.points), np.array(results)
-
+# Loss
 loss = BCELoss()
 m = Sigmoid()
 
 with torch.no_grad():
     for idx, (taxonomy_ids, model_ids, data) in enumerate(dataset):
-        taxonomy_id = taxonomy_ids[0] if isinstance(taxonomy_ids[0], str) else taxonomy_ids[0].item()
-        model_id = model_ids[0]
+        # taxonomy_id = taxonomy_ids[0] if isinstance(taxonomy_ids[0], str) else taxonomy_ids[0].item()
+        # model_id = model_ids[0]
 
-        gt = data.to(c.device)
+        gt = data.to(TrainConfig().device)
         choice = [torch.Tensor([1, 1, 1]), torch.Tensor([1, 1, -1]), torch.Tensor([1, -1, 1]), torch.Tensor([-1, 1, 1]),
                   torch.Tensor([-1, -1, 1]), torch.Tensor([-1, 1, -1]), torch.Tensor([1, -1, -1]),
                   torch.Tensor([-1, -1, -1])]
-        num_crop = int(n_points * crop_ratio["hard"])
+        num_crop = int(DataConfig().N_POINTS * crop_ratio[TrainConfig().difficulty])
 
         x, y = sample_point_cloud(data)
-        x, y = torch.tensor(x).to(c.device).float(), torch.tensor(y).to(c.device)
+        x, y = torch.tensor(x).to(TrainConfig().device).float(), torch.tensor(y).to(TrainConfig().device)
 
         for item in choice:
-            partial, _ = misc.seprate_point_cloud(gt.unsqueeze(0), n_points, num_crop, fixed_points=item)
+            partial, _ = misc.seprate_point_cloud(gt.unsqueeze(0), DataConfig().N_POINTS, num_crop, fixed_points=item)
             partial = misc.fps(partial, 2048)
 
             start = time.time()
@@ -146,8 +41,7 @@ with torch.no_grad():
             giulio_l_implicit_function = ImplicitFunction(ret)
 
             pred = giulio_l_implicit_function(x)
-            loss(m(pred).squeeze(), y.float()).backward()  # .backward()
-
+            loss(m(pred).squeeze(), y.float())  # .backward()
 
             end = time.time()
 

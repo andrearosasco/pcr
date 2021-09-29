@@ -1,4 +1,4 @@
-from utils import registry
+from utility import registry
 
 
 MODELS = registry.Registry('models')

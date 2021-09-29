@@ -4,7 +4,7 @@ import torch.nn as nn
 from timm.models.layers import DropPath,trunc_normal_
 
 from .dgcnn_group import DGCNN_Grouper
-from utils.logger import *
+from utility.logger import *
 import numpy as np
 # from knn_cuda import KNN
 from sklearn.neighbors import NearestNeighbors

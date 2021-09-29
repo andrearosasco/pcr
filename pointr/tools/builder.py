@@ -7,8 +7,8 @@ import torch.optim as optim
 from datasets import build_dataset_from_cfg
 from models import build_model_from_cfg
 # utils
-from utils.logger import *
-from utils.misc import *
+from utility.logger import *
+from utility.misc import *
 
 def dataset_builder(args, config):
     dataset = build_dataset_from_cfg(config._base_, config.others)
