@@ -29,10 +29,17 @@ class ModelConfig:
     PC_SIZE = 2048
     knn_layer = 1
     num_pred = 6144
-    num_query = 96
-    trans_dim = 384
     device = device
-    n_epoch = 5
+
+    n_channels = 3
+    embed_dim = 384
+    encoder_depth = 2
+    mlp_ratio = 2.
+    qkv_bias = False
+    num_heads = 6
+    attn_drop_rate = 0.
+    drop_rate = 0.
+    qk_scale = None
 
 
 @dataclass
@@ -42,6 +49,7 @@ class TrainConfig:
     voxel_size = 0.1
     noise_rate = 0.1
     percentage_sampled = 0.1
+    n_epoch = 5
 
 # USEFUL FUNCTION ######################################################################################################
 

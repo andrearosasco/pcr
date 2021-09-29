@@ -6,23 +6,22 @@ from .build import MODELS
 
 @MODELS.register_module()
 class Hypernetwork(nn.Module):
-    def __init__(self, config, **kwargs):
+    def __init__(self, config):
         super().__init__()
-        self.trans_dim = config.trans_dim
+        self.embed_dim = config.embed_dim
         self.knn_layer = config.knn_layer
         self.num_pred = config.num_pred
-        self.num_query = config.num_query
 
-        self.base_model = PCTransformer(in_chans=3, embed_dim=self.trans_dim, depth=[6, 8], drop_rate=0.,
-                                        num_query=self.num_query, knn_layer=self.knn_layer)
-
-        self.output = []
-
-        # self.output.append([
-        #         nn.Linear(1024, 64 * 3, bias=False).to(config.device),
-        #         nn.Linear(1024, 64, bias=False).to(config.device),
-        #         nn.Linear(1024, 64, bias=False).to(config.device),
-        #     ])
+        self.transformer = PCTransformer(in_chans=config.n_channels,
+                                         embed_dim=config.embed_dim,
+                                         depth=config.encoder_depth,
+                                         mlp_ratio=config.mlp_ratio,
+                                         qkv_bias=config.qkv_bias,
+                                         knn_layer=config.knn_layer,
+                                         num_heads=config.num_heads,
+                                         attn_drop_rate=config.attn_drop_rate,
+                                         drop_rate=config.drop_rate,
+                                         qk_scale=config.qk_scale)
 
         self.output = [[
                 nn.Linear(1024, 64 * 3, bias=False).to(config.device),
@@ -43,10 +42,10 @@ class Hypernetwork(nn.Module):
         ])
 
     def forward(self, xyz):
-        global_feature = self.base_model(xyz)  # B M C and B M 3
+        global_feature = self.transformer(xyz)  # B M C and B M 3
         impl = []
         for layer in self.output:
-            impl.append([l(global_feature) for l in layer])
+            impl.append([ly(global_feature) for ly in layer])
 
         return impl
 

@@ -1,9 +1,6 @@
 import torch
-from sklearn.neighbors import NearestNeighbors
 from torch import nn
 from pointnet2_ops import pointnet2_utils
-# from knn_cuda import KNN
-# knn = NearestNeighbors(n_neighbors=16)
 
 
 class DGCNN_Grouper(nn.Module):
@@ -15,29 +12,28 @@ class DGCNN_Grouper(nn.Module):
         self.input_trans = nn.Conv1d(3, 8, 1)
 
         self.layer1 = nn.Sequential(nn.Conv2d(16, 32, kernel_size=1, bias=False),
-                                   nn.GroupNorm(4, 32),
-                                   nn.LeakyReLU(negative_slope=0.2)
-                                   )
+                                    nn.GroupNorm(4, 32),
+                                    nn.LeakyReLU(negative_slope=0.2)
+                                    )
 
         self.layer2 = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1, bias=False),
-                                   nn.GroupNorm(4, 64),
-                                   nn.LeakyReLU(negative_slope=0.2)
-                                   )
+                                    nn.GroupNorm(4, 64),
+                                    nn.LeakyReLU(negative_slope=0.2)
+                                    )
 
         self.layer3 = nn.Sequential(nn.Conv2d(128, 64, kernel_size=1, bias=False),
-                                   nn.GroupNorm(4, 64),
-                                   nn.LeakyReLU(negative_slope=0.2)
-                                   )
+                                    nn.GroupNorm(4, 64),
+                                    nn.LeakyReLU(negative_slope=0.2)
+                                    )
 
         self.layer4 = nn.Sequential(nn.Conv2d(128, 128, kernel_size=1, bias=False),
-                                   nn.GroupNorm(4, 128),
-                                   nn.LeakyReLU(negative_slope=0.2)
-                                   )
+                                    nn.GroupNorm(4, 128),
+                                    nn.LeakyReLU(negative_slope=0.2)
+                                    )
 
-    
     @staticmethod
     def fps_downsample(coor, x, num_group):
-        xyz = coor.transpose(1, 2).contiguous() # b, n, 3
+        xyz = coor.transpose(1, 2).contiguous()  # b, n, 3
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, num_group)
 
         combined_x = torch.cat([coor, x], dim=1)
