@@ -86,4 +86,3 @@ class ChamferDistanceL1(torch.nn.Module):
         dist1 = torch.sqrt(dist1)
         dist2 = torch.sqrt(dist2)
         return (torch.mean(dist1) + torch.mean(dist2))/2
-
