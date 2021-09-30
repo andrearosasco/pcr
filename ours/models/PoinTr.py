@@ -25,21 +25,21 @@ class Hypernetwork(nn.Module):
                                          out_size=config.out_size)
 
         self.output = [[
-                nn.Linear(config.out_size, config.hidden_dim * 3, bias=False).to(config.device),
-                nn.Linear(config.out_size, config.hidden_dim, bias=False).to(config.device),
-                nn.Linear(config.out_size, config.hidden_dim, bias=False).to(config.device)]]
+                nn.Linear(config.out_size, config.hidden_dim * 3, bias=True).to(config.device),
+                nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
+                nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device)]]
 
         for _ in range(2):
             self.output.append([
-                    nn.Linear(config.out_size, config.hidden_dim * config.hidden_dim, bias=False).to(config.device),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=False).to(config.device),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=False).to(config.device)
+                    nn.Linear(config.out_size, config.hidden_dim * config.hidden_dim, bias=True).to(config.device),
+                    nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
+                    nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device)
                 ])
 
         self.output.append([
-            nn.Linear(config.out_size, config.hidden_dim, bias=False).to(config.device),
-            nn.Linear(config.out_size, 1, bias=False).to(config.device),
-            nn.Linear(config.out_size, 1, bias=False).to(config.device),
+            nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
+            nn.Linear(config.out_size, 1, bias=True).to(config.device),
+            nn.Linear(config.out_size, 1, bias=True).to(config.device),
         ])
 
         # self.test = nn.Linear(2048*3, 1024)

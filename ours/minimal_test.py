@@ -71,7 +71,12 @@ for e in range(TrainConfig().n_epoch):
             end = time.time()
 
             # wandb LOGS
-
+            y_ = y_.detach().cpu()
+            y = y.detach().cpu()
+            y_.apply_(lambda v: 1 if v > 0.5 else 0)
+            accuracy = torch.sum(y_ == y) / torch.numel(y)
+            wandb.log({"accuracy": accuracy.item()})
+            # TODO add accuracy
             wandb.log({"loss": loss_value.item()})
             wandb.log({"hypernetwork_parameters": ret})
             wandb.log({"y_": y_})
