@@ -30,7 +30,7 @@ class ModelConfig:
     knn_layer = 1
     num_pred = 6144
     device = device
-
+    # Transformer
     n_channels = 3
     embed_dim = 384
     encoder_depth = 2
@@ -40,6 +40,9 @@ class ModelConfig:
     attn_drop_rate = 0.
     drop_rate = 0.
     qk_scale = None
+    out_size = 1024
+    # Hypernetwork
+    hidden_dim = 32
 
 
 @dataclass

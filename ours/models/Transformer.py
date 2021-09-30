@@ -169,7 +169,7 @@ class PCTransformer(nn.Module):
     """
 
     def __init__(self, in_chans=3, embed_dim=768, depth=6, num_heads=6, mlp_ratio=2., qkv_bias=False, qk_scale=None,
-                 drop_rate=0., attn_drop_rate=0., knn_layer=-1):
+                 drop_rate=0., attn_drop_rate=0., knn_layer=-1, out_size=1024):
         super().__init__()
 
         self.num_features = self.embed_dim = embed_dim
@@ -201,13 +201,14 @@ class PCTransformer(nn.Module):
             for i in range(depth)])
 
         self.increase_dim = nn.Sequential(
-            nn.Conv1d(embed_dim, 1024, 1),
-            nn.BatchNorm1d(1024),
+            nn.Conv1d(embed_dim, out_size, 1),
+            nn.BatchNorm1d(out_size),
             nn.LeakyReLU(negative_slope=0.2),
-            nn.Conv1d(1024, 1024, 1)
+            nn.Conv1d(out_size, out_size, 1)
         )
 
-        self.apply(self._init_weights)
+        self.norm = nn.LayerNorm(1024)
+        # self.apply(self._init_weights)
 
     @staticmethod
     def _init_weights(m):
@@ -240,5 +241,7 @@ class PCTransformer(nn.Module):
 
         global_feature = self.increase_dim(x.transpose(1, 2))  # B 1024 N
         global_feature = torch.max(global_feature, dim=-1)[0]  # B 1024
+
+        global_feature = self.norm(global_feature)  # TODO added
 
         return global_feature
