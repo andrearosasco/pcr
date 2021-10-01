@@ -5,7 +5,7 @@ from .build import MODELS
 
 
 @MODELS.register_module()
-class Hypernetwork(nn.Module):
+class BackBone(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.embed_dim = config.embed_dim

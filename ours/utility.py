@@ -16,11 +16,11 @@ device = "cuda"
 
 @dataclass
 class DataConfig:
-    DATA_PATH = os.path.join("data", "ShapeNet55-34", "ShapeNet-55")
+    DATA_PATH = os.path.join("../data", "ShapeNet55-34", "ShapeNet-55")
     NAME = "ShapeNet"
     N_POINTS = 8192
-    subset = "test"
-    PC_PATH = os.path.join("data", "ShapeNet55-34", "shapenet_pc")
+    subset = "train"
+    PC_PATH = os.path.join("../data", "ShapeNet55-34", "shapenet_pc")
 
 
 @dataclass
@@ -33,7 +33,7 @@ class ModelConfig:
     # Transformer
     n_channels = 3
     embed_dim = 384
-    encoder_depth = 2
+    encoder_depth = 6
     mlp_ratio = 2.
     qkv_bias = False
     num_heads = 6

@@ -1,6 +1,6 @@
 from torch.nn import BCELoss, Sigmoid
 from datasets.ShapeNet55Dataset import ShapeNet
-from models.PoinTr import Hypernetwork, ImplicitFunction
+from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 from utils import misc
 import time
@@ -13,7 +13,7 @@ import open3d as o3d
 dataset = ShapeNet(DataConfig())
 
 # Model
-model = Hypernetwork(ModelConfig())
+model = BackBone(ModelConfig())
 for parameter in model.parameters():
     if len(parameter.size()) > 2:
         torch.nn.init.xavier_uniform_(parameter)
@@ -34,7 +34,7 @@ wandb.init(project='pcr', entity='coredump')
 wandb.config["train"] = {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if not k.startswith("__")}
 wandb.config["model"] = {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if not k.startswith("__")}
 wandb.config["data"] = {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if not k.startswith("__")}
-wandb.watch(model, log="all", log_freq=100, log_graph=True)
+wandb.watch(model, log="all", log_freq=1, log_graph=True)
 
 for e in range(TrainConfig().n_epoch):
     for idx, (taxonomy_ids, model_ids, data) in enumerate(

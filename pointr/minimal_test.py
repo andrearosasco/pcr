@@ -37,11 +37,11 @@ dataset_name = "ShapeNet"
 
 class data_config:
     def __init__(self):
-        self.DATA_PATH = 'data/ShapeNet55-34/ShapeNet-55'
+        self.DATA_PATH = '../data/ShapeNet55-34/ShapeNet-55'
         self.NAME = 'ShapeNet'
         self.N_POINTS = 8192
         self.subset = 'test'
-        self.PC_PATH = 'data/ShapeNet55-34/shapenet_pc'
+        self.PC_PATH = '../data/ShapeNet55-34/shapenet_pc'
 
 
 c = data_config()
