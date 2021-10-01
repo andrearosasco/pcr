@@ -149,14 +149,14 @@ def seprate_point_cloud(xyz, num_points, crop, fixed_points = None, padding_zero
 
         points = points.unsqueeze(0)
 
-        if fixed_points is None:       
-            center = F.normalize(torch.randn(1,1,3),p=2,dim=-1).device('cpu')
+        if fixed_points is None:
+            center = F.normalize(torch.randn(1,1,3),p=2,dim=-1).to(xyz.device)
         else:
             if isinstance(fixed_points,list):
                 fixed_point = random.sample(fixed_points,1)[0]
             else:
                 fixed_point = fixed_points
-            center = fixed_point.reshape(1,1,3).cuda()
+            center = fixed_point.reshape(1,1,3).to(xyz.device)
 
         distance_matrix = torch.norm(center.unsqueeze(2) - points.unsqueeze(1), p =2 ,dim = -1)  # 1 1 2048
 
