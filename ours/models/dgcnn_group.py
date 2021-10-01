@@ -1,6 +1,7 @@
 import torch
 from torch import nn
-from pointnet2_ops import pointnet2_utils
+
+from utils.fps import fp_sampling
 
 
 class DGCNN_Grouper(nn.Module):
@@ -34,15 +35,11 @@ class DGCNN_Grouper(nn.Module):
     @staticmethod
     def fps_downsample(coor, x, num_group):
         xyz = coor.transpose(1, 2).contiguous()  # b, n, 3
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, num_group)
+        fps_idx = fp_sampling(xyz, num_group)
 
         combined_x = torch.cat([coor, x], dim=1)
 
-        new_combined_x = (
-            pointnet2_utils.gather_operation(
-                combined_x, fps_idx
-            )
-        )
+        new_combined_x = combined_x[:, :, fps_idx.squeeze().long()]
 
         new_coor = new_combined_x[:, :3]
         new_x = new_combined_x[:, 3:]

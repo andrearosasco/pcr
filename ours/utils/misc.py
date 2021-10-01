@@ -7,16 +7,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 from collections import abc
-from pointnet2_ops import pointnet2_utils
+from utils.fps import fp_sampling
 
+'''
+     data B N 3
+     number int
+ '''
 
 def fps(data, number):
     '''
         data B N 3
         number int
     '''
-    fps_idx = pointnet2_utils.furthest_point_sample(data, number) 
-    fps_data = pointnet2_utils.gather_operation(data.transpose(1, 2).contiguous(), fps_idx).transpose(1,2).contiguous()
+    fps_idx = fp_sampling(data, number)
+    fps_data = data.transpose(1, 2)[:, :, fps_idx.squeeze().long()].transpose(1, 2)
+
     return fps_data
 
 
@@ -150,13 +155,13 @@ def seprate_point_cloud(xyz, num_points, crop, fixed_points = None, padding_zero
         points = points.unsqueeze(0)
 
         if fixed_points is None:       
-            center = F.normalize(torch.randn(1,1,3),p=2,dim=-1).device('cpu')
+            center = F.normalize(torch.randn(1,1,3),p=2,dim=-1).to('cuda')
         else:
             if isinstance(fixed_points,list):
                 fixed_point = random.sample(fixed_points,1)[0]
             else:
                 fixed_point = fixed_points
-            center = fixed_point.reshape(1,1,3).cuda()
+            center = fixed_point.reshape(1,1,3).to('cuda')
 
         distance_matrix = torch.norm(center.unsqueeze(2) - points.unsqueeze(1), p =2 ,dim = -1)  # 1 1 2048
 

@@ -59,7 +59,7 @@ for e in range(TrainConfig().n_epoch):
 
 
         gt = data.to(TrainConfig().device)
-        partial, _ = misc.seprate_point_cloud(gt, DataConfig().N_POINTS, [int(DataConfig().N_POINTS * 1 / 4), int(DataConfig().N_POINTS * 3 / 4)],
+        partial, _ = misc.seprate_point_cloud(gt.unsqueeze(0), DataConfig().N_POINTS, [int(DataConfig().N_POINTS * 1 / 4), int(DataConfig().N_POINTS * 3 / 4)],
                                               fixed_points=None)
         partial = partial.cuda()
 
@@ -109,7 +109,7 @@ for e in range(TrainConfig().n_epoch):
                 if value.item() == 1.:
                     true.append(point)
             if len(true) > 0:
-                true = torch.cat(true).reshape(-1, 3)
+                true = torch.cat(true).reshape(-1, 3) # TODO sometimes it's a list and exception occurs
 
             wandb.log({"original":
                 wandb.Object3D({
