@@ -53,6 +53,8 @@ class TrainConfig:
     noise_rate = 0.1
     percentage_sampled = 0.1
     n_epoch = 5
+    log_metrics_every = 100
+    log_pcs_every = 10000
 
 # USEFUL FUNCTION ######################################################################################################
 

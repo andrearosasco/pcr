@@ -9,10 +9,6 @@ import os
 from collections import abc
 from utils.fps import fp_sampling
 
-'''
-     data B N 3
-     number int
- '''
 
 def fps(data, number):
     '''
@@ -155,13 +151,13 @@ def seprate_point_cloud(xyz, num_points, crop, fixed_points = None, padding_zero
         points = points.unsqueeze(0)
 
         if fixed_points is None:       
-            center = F.normalize(torch.randn(1,1,3),p=2,dim=-1).to('cuda')
+            center = F.normalize(torch.randn(1,1,3),p=2,dim=-1).device('cpu')
         else:
             if isinstance(fixed_points,list):
                 fixed_point = random.sample(fixed_points,1)[0]
             else:
                 fixed_point = fixed_points
-            center = fixed_point.reshape(1,1,3).to('cuda')
+            center = fixed_point.reshape(1,1,3).cuda()
 
         distance_matrix = torch.norm(center.unsqueeze(2) - points.unsqueeze(1), p =2 ,dim = -1)  # 1 1 2048
 

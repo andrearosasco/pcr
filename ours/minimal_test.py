@@ -7,7 +7,7 @@ import time
 from utility import DataConfig, ModelConfig, TrainConfig, sample_point_cloud, crop_ratio
 import wandb
 from tqdm import tqdm
-import open3d as o3d
+from logger import Logger
 
 # Load Dataset
 dataset = ShapeNet(DataConfig())
@@ -28,26 +28,21 @@ m = Sigmoid()
 optimizer = torch.optim.Adam(params=model.parameters())
 
 # WANDB
-wandb.login(key="f5f77cf17fad38aaa2db860576eee24bde163b7a")
-wandb.init(project='pcr', entity='coredump')
-# transform class into dict to log it to wandb
-wandb.config["train"] = {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if not k.startswith("__")}
-wandb.config["model"] = {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if not k.startswith("__")}
-wandb.config["data"] = {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if not k.startswith("__")}
-wandb.watch(model, log="all", log_freq=1, log_graph=True)
+logger = Logger(model)
+
+# Loop variables
+# choice = [torch.Tensor([1, 1, 1]), torch.Tensor([1, 1, -1]), torch.Tensor([1, -1, 1]), torch.Tensor([-1, 1, 1]),
+#           torch.Tensor([-1, -1, 1]), torch.Tensor([-1, 1, -1]), torch.Tensor([1, -1, -1]),
+#           torch.Tensor([-1, -1, -1])]  # TODO ADD
+choice = [torch.Tensor([1, 1, 1])]  # TODO REMOVE
+num_crop = int(DataConfig().N_POINTS * crop_ratio[TrainConfig().difficulty])
 
 for e in range(TrainConfig().n_epoch):
     for idx, (taxonomy_ids, model_ids, data) in enumerate(
             tqdm(dataset, position=0, leave=True, desc="Epoch " + str(e))):
         # taxonomy_id = taxonomy_ids[0] if isinstance(taxonomy_ids[0], str) else taxonomy_ids[0].item()
         # model_id = model_ids[0]
-
         gt = data.to(TrainConfig().device)
-        # choice = [torch.Tensor([1, 1, 1]), torch.Tensor([1, 1, -1]), torch.Tensor([1, -1, 1]), torch.Tensor([-1, 1, 1]),
-        #           torch.Tensor([-1, -1, 1]), torch.Tensor([-1, 1, -1]), torch.Tensor([1, -1, -1]),
-        #           torch.Tensor([-1, -1, -1])]  # TODO READD
-        choice = [torch.Tensor([1, 1, 1])]  # TODO REMOVE
-        num_crop = int(DataConfig().N_POINTS * crop_ratio[TrainConfig().difficulty])
 
         x, y = sample_point_cloud(data, TrainConfig().voxel_size,
                                   TrainConfig().noise_rate,
