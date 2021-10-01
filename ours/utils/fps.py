@@ -3,7 +3,9 @@ import torch
 
 
 def fp_sampling(points, num):
-    points = points.squeeze()
+    if points.shape[0] == 8:
+        pass
+
     D = cdist(points, points)
     # By default, takes the first point in the list to be the
     # first point in the permutation, but could be random
