@@ -82,11 +82,12 @@ for e in range(TrainConfig().n_epoch):
         accuracy = torch.sum((pred == y)) / torch.numel(pred)
         accuracies.append(accuracy.item())
 
-        if idx % 100 == 0:  # Log numerical stuff
+        if idx % TrainConfig().log_metrics_every == 0:  # Log numerical stuff
             logger.log_metrics(losses, accuracies, pred, y_, y, z, giulio_l_implicit_function.params)
             losses = []
+            accuracies = []
 
-        if idx % 1000 == 0:  # Log point clouds
+        if idx % TrainConfig().log_pcs_every == 0:  # Log point clouds
             true_points = torch.cat((x.detach(), y.unsqueeze(1)), dim=1)
 
             true = []

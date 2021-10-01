@@ -55,7 +55,8 @@ class Logger:
         wandb.log({"scales of implicit function": torch.cat(scales)})
         wandb.log({"b of implicit function": torch.cat(biases)})
 
-    def log_pcs(self, complete, partial, impl_input, impl_pred):
+    @staticmethod
+    def log_pcs(complete, partial, impl_input, impl_pred):
         """
         :param complete: FloatTensor on CUDA with shape (N, 3)
         :param partial: FloatTensor on CUDA with shape (N, 3)
