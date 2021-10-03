@@ -213,23 +213,6 @@ def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05):
     return torch.cat(results, dim=0)
 
 
-# Test function
-if __name__ == "__main__":
-
-    def model(elem):
-        import random
-        if random.random() > 0.5:
-            return torch.zeros_like(elem).fill_(1.)[:, :1]
-        else:
-            return torch.zeros_like(elem).fill_(0.)[:, :1]
-
-    res = pc_grid_reconstruction(model)
-
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(res)
-    draw_geometries([pcd])
-
-
 def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0.1):  # 1 2048 3
     # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
     # VOXEL
