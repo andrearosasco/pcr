@@ -1,6 +1,6 @@
 import os
-import torch
 import numpy as np
+import torch
 import torch.utils.data as data
 from .io import IO
 from .build import DATASETS

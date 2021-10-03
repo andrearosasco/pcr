@@ -4,10 +4,10 @@ from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 from utils import misc
 import time
-from utility import DataConfig, ModelConfig, TrainConfig, sample_point_cloud, crop_ratio
+from configs.utility import DataConfig, ModelConfig, TrainConfig, sample_point_cloud, crop_ratio
 import wandb
 from tqdm import tqdm
-from logger import Logger
+from utils.logger import Logger
 
 # Load Dataset
 dataset = ShapeNet(DataConfig())

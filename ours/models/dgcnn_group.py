@@ -39,7 +39,7 @@ class DGCNN_Grouper(nn.Module):
 
         combined_x = torch.cat([coor, x], dim=1)
 
-        new_combined_x = combined_x[:, :, fps_idx.squeeze().long()]
+        new_combined_x = combined_x.transpose(1, 2)[torch.arange(fps_idx.shape[0]).unsqueeze(-1), fps_idx.long(), :].transpose(1, 2)
 
         new_coor = new_combined_x[:, :3]
         new_x = new_combined_x[:, 3:]
@@ -58,9 +58,8 @@ class DGCNN_Grouper(nn.Module):
         num_points_q = x_q.size(2)
 
         with torch.no_grad():
-            dist = torch.cdist(coor_k[0].T, coor_q[0].T)
-            _, idx = torch.topk(dist, dim=0, k=16, largest=False)
-            idx = idx.unsqueeze(0)
+            dist = torch.cdist(coor_k.transpose(1, 2), coor_q.transpose(1, 2))
+            _, idx = torch.topk(dist, dim=1, k=16, largest=False)
 
             assert idx.shape[1] == k
             idx_base = torch.arange(0, batch_size, device=x_q.device).view(-1, 1, 1) * num_points_k

@@ -1,127 +1,77 @@
-import logging
-import torch.distributed as dist
-
-logger_initialized = {}
-
-def get_root_logger(log_file=None, log_level=logging.INFO, name='main'):
-    """Get root logger and add a keyword filter to it.
-    The logger will be initialized if it has not been initialized. By default a
-    StreamHandler will be added. If `log_file` is specified, a FileHandler will
-    also be added. The name of the root logger is the top-level package name,
-    e.g., "mmdet3d".
-    Args:
-        log_file (str, optional): File path of log. Defaults to None.
-        log_level (int, optional): The level of logger.
-            Defaults to logging.INFO.
-        name (str, optional): The name of the root logger, also used as a
-            filter keyword. Defaults to 'mmdet3d'.
-    Returns:
-        :obj:`logging.Logger`: The obtained logger
-    """
-    logger = get_logger(name=name, log_file=log_file, log_level=log_level)
-    # add a logging filter
-    logging_filter = logging.Filter(name)
-    logging_filter.filter = lambda record: record.find(name) != -1
-
-    return logger
+import wandb
+from configs.cfg1 import TrainConfig, ModelConfig, DataConfig
+import copy
+import torch
 
 
-def get_logger(name, log_file=None, log_level=logging.INFO, file_mode='w'):
-    """Initialize and get a logger by name.
-    If the logger has not been initialized, this method will initialize the
-    logger by adding one or two handlers, otherwise the initialized logger will
-    be directly returned. During initialization, a StreamHandler will always be
-    added. If `log_file` is specified and the process rank is 0, a FileHandler
-    will also be added.
-    Args:
-        name (str): Logger name.
-        log_file (str | None): The log filename. If specified, a FileHandler
-            will be added to the logger.
-        log_level (int): The logger level. Note that only the process of
-            rank 0 is affected, and other processes will set the level to
-            "Error" thus be silent most of the time.
-        file_mode (str): The file mode used in opening log file.
-            Defaults to 'w'.
-    Returns:
-        logging.Logger: The expected logger.
-    """
-    logger = logging.getLogger(name)
-    if name in logger_initialized:
-        return logger
-    # handle hierarchical names
-    # e.g., logger "a" is initialized, then logger "a.b" will skip the
-    # initialization since it is a child of "a".
-    for logger_name in logger_initialized:
-        if name.startswith(logger_name):
-            return logger
+class Logger:
+    def __init__(self, model, active=True):
+        self.active = active
+        if active:
+            wandb.login(key="f5f77cf17fad38aaa2db860576eee24bde163b7a")
+            wandb.init(project='pcr', entity='coredump')
+            # transform class into dict to log it to wandb TODO it does not work
+            wandb.config["train"] = {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
+                                     not k.startswith("__")}
+            wandb.config["model"] = {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
+                                     not k.startswith("__")}
+            wandb.config["data"] = {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
+                                    not k.startswith("__")}
+            wandb.watch(model, log="all", log_freq=1, log_graph=True)
 
-    # handle duplicate logs to the console
-    # Starting in 1.8.0, PyTorch DDP attaches a StreamHandler <stderr> (NOTSET)
-    # to the root logger. As logger.propagate is True by default, this root
-    # level handler causes logging messages from rank>0 processes to
-    # unexpectedly show up on the console, creating much unwanted clutter.
-    # To fix this issue, we set the root logger's StreamHandler, if any, to log
-    # at the ERROR level.
-    for handler in logger.root.handlers:
-        if type(handler) is logging.StreamHandler:
-            handler.setLevel(logging.ERROR)
+    def log_metrics(self, losses, accuracies, out, out_sig, target, z, impl_params):
+        """
+        :param losses: list ( float )
+        :param accuracies: list ( float )
+        :param out: FloatTensor on CUDA
+        :param out_sig: FloatTensor on CUDA
+        :param target: FloatTensor on CUDA
+        :param z: FloatTensor on CUDA
+        :param impl_params: list ( list ( FloatTensor on CUDA ) )
+        """
+        if self.active:
+            loss = sum(losses) / len(losses)
+            acc = sum(accuracies) / len(accuracies)
+            out = out.detach().cpu()
+            out_sig = out_sig.detach().cpu()
+            pred = copy.deepcopy(out_sig).apply_(lambda v: 1 if v > 0.5 else 0)
+            target = target.detach().cpu()
+            z = z.detach().cpu()
 
-    stream_handler = logging.StreamHandler()
-    handlers = [stream_handler]
+            wandb.log({"accuracy": acc})
+            wandb.log({"loss": loss})
+            wandb.log({"out": out})
+            wandb.log({"out_sig": out_sig})
+            wandb.log({"pred": pred})
+            wandb.log({"target": target})
+            wandb.log({"z": z})
 
-    if dist.is_available() and dist.is_initialized():
-        rank = dist.get_rank()
-    else:
-        rank = 0
+            weights = []
+            scales = []
+            biases = []
+            for param in impl_params:
+                weights.append(param[0].view(-1))
+                scales.append(param[1].view(-1))
+                biases.append(param[2].view(-1))
+            wandb.log({"w of implicit function": torch.cat(weights)})
+            wandb.log({"scales of implicit function": torch.cat(scales)})
+            wandb.log({"b of implicit function": torch.cat(biases)})
 
-    # only rank 0 will add a FileHandler
-    if rank == 0 and log_file is not None:
-        # Here, the default behaviour of the official logger is 'a'. Thus, we
-        # provide an interface to change the file mode to the default
-        # behaviour.
-        file_handler = logging.FileHandler(log_file, file_mode)
-        handlers.append(file_handler)
+    def log_pcs(self, complete, partial, impl_input, impl_pred):
+        """
+        :param complete: FloatTensor on CUDA with shape (N, 3)
+        :param partial: FloatTensor on CUDA with shape (N, 3)
+        :param impl_input: FloatTensor on CUDA with shape (N, 4) (also class)
+        :param impl_pred: FloatTensor on CUDA with shape (N, 3)
+        """
+        if self.active:
+            complete = complete.detach().cpu().numpy()
+            partial = partial.detach().cpu().numpy()
+            impl_input = impl_input.detach().cpu().numpy()
+            impl_pred = impl_pred.detach().cpu().numpy()
 
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    for handler in handlers:
-        handler.setFormatter(formatter)
-        handler.setLevel(log_level)
-        logger.addHandler(handler)
-
-    if rank == 0:
-        logger.setLevel(log_level)
-    else:
-        logger.setLevel(logging.ERROR)
-
-    logger_initialized[name] = True
-
-
-    return logger
-
-
-def print_log(msg, logger=None, level=logging.INFO):
-    """Print a log message.
-    Args:
-        msg (str): The message to be logged.
-        logger (logging.Logger | str | None): The logger to be used.
-            Some special loggers are:
-            - "silent": no message will be printed.
-            - other str: the logger obtained with `get_root_logger(logger)`.
-            - None: The `print()` method will be used to print log messages.
-        level (int): Logging level. Only available when `logger` is a Logger
-            object or "root".
-    """
-    if logger is None:
-        print(msg)
-    elif isinstance(logger, logging.Logger):
-        logger.log(level, msg)
-    elif logger == 'silent':
-        pass
-    elif isinstance(logger, str):
-        _logger = get_logger(logger)
-        _logger.log(level, msg)
-    else:
-        raise TypeError(
-            'logger should be either a logging.Logger object, str, '
-            f'"silent" or None, but got {type(logger)}')
+            pcs = {}
+            for pc, name in zip([complete, partial, impl_input, impl_pred],
+                                ["original", "partial", "impl_input", "impl_pred"]):
+                pcs[name] = wandb.Object3D({"type": "lidar/beta", "points": pc})
+            wandb.log(pcs)

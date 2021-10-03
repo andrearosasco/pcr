@@ -29,7 +29,7 @@ dataset : {
             others: {subset: 'test'}}}
 model : {
   NAME: PoinTr, num_pred: 6144, num_query: 96, knn_layer: 1, trans_dim: 384}
-total_bs : 96
+total_bs : 8
 step_per_update : 1
 max_epoch : 200
 

@@ -3,11 +3,11 @@ import torch.nn as nn
 import os
 import json
 from tools import builder
-from utility import misc, dist_utils
+from utils import misc, dist_utils
 import time
-from utility.logger import *
-from utility.AverageMeter import AverageMeter
-from utility.metrics import Metrics
+from utils.logger import *
+from utils.AverageMeter import AverageMeter
+from utils.metrics import Metrics
 from extensions.chamfer_dist import ChamferDistanceL1, ChamferDistanceL2
 
 def run_net(args, config, train_writer=None, val_writer=None):

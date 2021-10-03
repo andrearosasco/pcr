@@ -1,10 +1,8 @@
 import torch
 from torch import nn
 from .Transformer import PCTransformer
-from .build import MODELS
 
 
-@MODELS.register_module()
 class BackBone(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -70,13 +68,13 @@ class ImplicitFunction(nn.Module):
 
     def forward(self, points):
         x = points
-
+        # TODO: I just added unsqueeze(1), reshape(-1) and bmm and everything works (or did I introduce some kind of bug?)
         weights, scales, biases = self.params[0]
-        weights = weights.reshape(3, self.hidden_dim)
-        scales = scales.squeeze()
-        biases = biases.squeeze()
+        weights = weights.reshape(-1, 3, self.hidden_dim)
+        scales = scales.unsqueeze(1)
+        biases = biases.unsqueeze(1)
 
-        x = torch.mm(x, weights) * scales + biases
+        x = torch.bmm(x, weights) * scales + biases
         x = self.dropout(x)
         # x = self.norm1(x)
         x = self.relu(x)
@@ -85,21 +83,21 @@ class ImplicitFunction(nn.Module):
         for layer in self.params[1:-1]:
             weights, scales, biases = layer
 
-            weights = weights.reshape(self.hidden_dim, self.hidden_dim)
-            scales = scales.squeeze()
-            biases = biases.squeeze()
+            weights = weights.reshape(-1, self.hidden_dim, self.hidden_dim)
+            scales = scales.unsqueeze(1)
+            biases = biases.unsqueeze(1)
 
-            x = torch.mm(x, weights) * scales + biases
+            x = torch.bmm(x, weights) * scales + biases
             x = self.dropout(x)
             # x = norm(x)
             x = self.relu(x)
 
         weights, scales, biases = self.params[-1]
 
-        weights = weights.reshape(self.hidden_dim, 1)
-        scales = scales.squeeze()
-        biases = biases.squeeze()
+        weights = weights.reshape(-1, self.hidden_dim, 1)
+        scales = scales.unsqueeze(1)
+        biases = biases.unsqueeze(1)
 
-        x = torch.mm(x, weights) * scales + biases
+        x = torch.bmm(x, weights) * scales + biases
 
         return x

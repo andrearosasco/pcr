@@ -5,10 +5,11 @@ from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 from utils import misc
 import time
-from utility import DataConfig, ModelConfig, TrainConfig, sample_point_cloud, crop_ratio
+from configs.cfg1 import DataConfig, ModelConfig, TrainConfig
+from utils.misc import sample_point_cloud
 from tqdm import tqdm
 import copy
-from logger import Logger
+from utils.logger import Logger
 
 if __name__ == '__main__':
     # Load Dataset
@@ -30,7 +31,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(params=model.parameters())
 
     # WANDB
-    logger = Logger(model)
+    logger = Logger(model, active=False)
 
     # Dataset
     config = TrainConfig
@@ -44,20 +45,14 @@ if __name__ == '__main__':
     accuracies = []
 
     for e in range(TrainConfig().n_epoch):
-        for idx, (taxonomy_ids, model_ids, data) in enumerate(
+        for idx, (taxonomy_ids, model_ids, data, imp_x, imp_y) in enumerate(
                 tqdm(dataloader, position=0, leave=True, desc="Epoch " + str(e))):
-            # taxonomy_id = taxonomy_ids[0] if isinstance(taxonomy_ids[0], str) else taxonomy_ids[0].item()
-            # model_id = model_ids[0]
-
-            num_crop = int(DataConfig().N_POINTS * crop_ratio[TrainConfig().difficulty])
 
             gt = data.to(TrainConfig().device)
-
             partial, _ = misc.seprate_point_cloud(gt, DataConfig().N_POINTS,
                                                   [int(DataConfig().N_POINTS * 1 / 4), int(DataConfig().N_POINTS * 3 / 4)],
                                                   fixed_points=None)
             partial = partial.cuda()
-
             start = time.time()
             # for pc in gt:
             #     x, y = sample_point_cloud(pc, TrainConfig().voxel_size,
@@ -68,6 +63,8 @@ if __name__ == '__main__':
 
             optimizer.zero_grad()
             ret, z = model(partial)
+
+            x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
             giulio_l_implicit_function = ImplicitFunction(ret)
             pred = giulio_l_implicit_function(x)
             y_ = m(pred).squeeze()
@@ -93,11 +90,12 @@ if __name__ == '__main__':
                 accuracies = []
 
             if idx % TrainConfig().log_pcs_every == 0:  # Log point clouds
-                true_points = torch.cat((x.detach(), y.unsqueeze(1)), dim=1)
+                true_points = torch.cat((x.detach(), y.unsqueeze(-1)), dim=2)
 
                 true = []
+
                 for point, value in zip(x, pred.unsqueeze(1)):
-                    if value.item() == 1.:
+                    if value.squeeze().item() == 1.:
                         true.append(point)
                 if len(true) > 0:
                     true = torch.stack(true)

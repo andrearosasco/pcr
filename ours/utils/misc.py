@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import open3d
 from mpl_toolkits.mplot3d import Axes3D
 import random
 import torch
@@ -7,6 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 from collections import abc
+
+from torch import randn_like
+
 from utils.fps import fp_sampling
 
 
@@ -16,7 +20,7 @@ def fps(data, number):
         number int
     '''
     fps_idx = fp_sampling(data, number)
-    fps_data = data.transpose(1, 2)[:, :, fps_idx.squeeze().long()].transpose(1, 2)
+    fps_data = data[torch.arange(fps_idx.shape[0]).unsqueeze(-1), fps_idx.long(), :]
 
     return fps_data
 
@@ -183,6 +187,59 @@ def seprate_point_cloud(xyz, num_points, crop, fixed_points = None, padding_zero
     crop_data = torch.cat(CROP,dim=0)# B M 3
 
     return input_data.contiguous(), crop_data.contiguous()
+
+
+def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0.1):  # 1 2048 3
+    # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
+    # VOXEL
+    xyz = xyz.cpu()
+    pcd = open3d.geometry.PointCloud()
+    pcd.points = open3d.utility.Vector3dVector(xyz)
+    voxel_grid = open3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
+    # open3d.open3d.visualization.draw_geometries([voxel_grid])
+
+    # ORIGINAL PC
+    # pcd = open3d.geometry.PointCloud()
+    # pcd.points = open3d.utility.Vector3dVector(xyz)
+    # open3d.open3d.visualization.draw_geometries([pcd])
+
+    # WITH GAUSSIAN NOISE
+    z = randn_like(xyz) * noise_rate
+    xyz = xyz + z
+    pcd = open3d.geometry.PointCloud()
+    pcd.points = open3d.utility.Vector3dVector(xyz)
+    # open3d.open3d.visualization.draw_geometries([pcd])
+
+    # WITH 10% UNIFORM RANDOM POINTS
+    k = int(len(xyz) * percentage_sampled)
+    random_points = torch.FloatTensor(k, 3).uniform_(-1, 1)
+    pcd = open3d.geometry.PointCloud()
+    xyz = torch.cat((xyz, random_points))
+    pcd.points = open3d.utility.Vector3dVector(xyz)
+    # open3d.open3d.visualization.draw_geometries([pcd])
+
+    # WITH LABEL
+    results = voxel_grid.check_if_included(open3d.utility.Vector3dVector(xyz))
+    colors = np.zeros((len(xyz), 3))
+    for i, value in enumerate(results):
+        if value:
+            colors[i] = np.array([0, 0, 1])
+        else:
+            colors[i] = np.array([0, 1, 0])
+    pcd.colors = open3d.utility.Vector3dVector(colors)
+    # open3d.open3d.visualization.draw_geometries([pcd])
+
+    # t = 0
+    # f = 0
+    # for elem in results:
+    #     if elem:
+    #         t += 1
+    #     else:
+    #         f += 1
+    # print("Found ", t, " points inside the voxels and ", f, " points outside the voxel")
+
+    return np.array(pcd.points), np.array(results)
+
 
 def get_ptcloud_img(ptcloud):
     fig = plt.figure(figsize=(8, 8))

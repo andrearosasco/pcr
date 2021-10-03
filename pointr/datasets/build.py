@@ -1,4 +1,4 @@
-from utility import registry
+from utils import registry
 
 
 DATASETS = registry.Registry('dataset')

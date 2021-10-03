@@ -9,7 +9,7 @@ import random
 import os
 import json
 from .build import DATASETS
-from utility.logger import *
+from utils.logger import *
 
 
 # References:
