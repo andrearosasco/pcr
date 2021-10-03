@@ -188,6 +188,47 @@ def seprate_point_cloud(xyz, num_points, crop, fixed_points = None, padding_zero
 
     return input_data.contiguous(), crop_data.contiguous()
 
+def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05):
+    x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
+    y_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
+    z_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
+    grid_2d = torch.cartesian_prod(x_range, y_range)
+    results = []
+    for z in tqdm.tqdm(z_range):
+        repeated_z = z.reshape(1, 1).repeat(grid_2d.shape[0], 1)
+        grid_3d = torch.cat((grid_2d, repeated_z), dim=1)
+
+        # TODO REMOVE DEBUG
+        # pcd = o3d.geometry.PointCloud()
+        # pcd.points = o3d.utility.Vector3dVector(grid_3d)
+        # draw_geometries([pcd])
+        # TODO END DEBUG
+
+        result = model(grid_3d)
+        result = torch.cat((grid_3d, result), dim=-1)
+        good_ids = torch.nonzero(result[..., -1] == 1.).squeeze(1)
+        result = result[good_ids]
+        results.append(result[..., :-1])
+
+    return torch.cat(results, dim=0)
+
+
+# Test function
+if __name__ == "__main__":
+
+    def model(elem):
+        import random
+        if random.random() > 0.5:
+            return torch.zeros_like(elem).fill_(1.)[:, :1]
+        else:
+            return torch.zeros_like(elem).fill_(0.)[:, :1]
+
+    res = pc_grid_reconstruction(model)
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(res)
+    draw_geometries([pcd])
+
 
 def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0.1):  # 1 2048 3
     # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
