@@ -1,7 +1,7 @@
 from torch.nn import BCELoss, Sigmoid
 from torch.utils.data import DataLoader
 from datasets.ShapeNet55Dataset import ShapeNet
-from models.HyperNetwork import BackBone, ImplicitFunction
+from models.HyperNetwork import BackBone, ImplicitFunction, HyperNetwork
 import torch
 from utils import misc
 import time
@@ -16,7 +16,8 @@ if __name__ == '__main__':
     dataset = ShapeNet(DataConfig())
 
     # Model
-    model = BackBone(ModelConfig())
+    model = HyperNetwork(ModelConfig())
+
     for parameter in model.parameters():
         if len(parameter.size()) > 2:
             torch.nn.init.xavier_uniform_(parameter)
@@ -28,6 +29,7 @@ if __name__ == '__main__':
     m = Sigmoid()
 
     # Optimizer
+    # TODO add class to config (e.g. TrainConfig.oprimizer(params=model.parameters()))
     optimizer = torch.optim.Adam(params=model.parameters())
 
     # WANDB
@@ -49,26 +51,20 @@ if __name__ == '__main__':
                 tqdm(dataloader, position=0, leave=True, desc="Epoch " + str(e))):
 
             gt = data.to(TrainConfig().device)
+            x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
+
             partial, _ = misc.seprate_point_cloud(gt, DataConfig().N_POINTS,
                                                   [int(DataConfig().N_POINTS * 1 / 4), int(DataConfig().N_POINTS * 3 / 4)],
                                                   fixed_points=None)
             partial = partial.cuda()
             start = time.time()
-            # for pc in gt:
-            #     x, y = sample_point_cloud(pc, TrainConfig().voxel_size,
-            #                               TrainConfig().noise_rate,
-            #                               TrainConfig().percentage_sampled)
-            #     x, y = torch.tensor(x).to(TrainConfig().device).float(), torch.tensor(y).to(
-            #         TrainConfig().device).float()
 
-            optimizer.zero_grad()
-            ret, z = model(partial)
+            pred = model(partial, x)
 
-            x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
-            giulio_l_implicit_function = ImplicitFunction(ret)
-            pred = giulio_l_implicit_function(x)
             y_ = m(pred).squeeze()
             loss_value = loss(y_.unsqueeze(0), y.unsqueeze(0))
+
+            optimizer.zero_grad()
             loss_value.backward()
             optimizer.step()
 
