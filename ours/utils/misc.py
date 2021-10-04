@@ -220,7 +220,7 @@ def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0
     pcd = open3d.geometry.PointCloud()
     pcd.points = open3d.utility.Vector3dVector(xyz)
     voxel_grid = open3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
-    # open3d.open3d.visualization.draw_geometries([voxel_grid])
+    # open3d.visualization.draw_geometries([voxel_grid])
 
     # ORIGINAL PC
     # pcd = open3d.geometry.PointCloud()

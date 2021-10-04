@@ -6,7 +6,6 @@ import torch
 from utils import misc
 import time
 from configs.cfg1 import DataConfig, ModelConfig, TrainConfig
-from utils.misc import sample_point_cloud
 from tqdm import tqdm
 import copy
 from utils.logger import Logger
@@ -34,7 +33,6 @@ if __name__ == '__main__':
     logger = Logger(model, active=False)
 
     # Dataset
-    config = TrainConfig
     # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
     dataloader = DataLoader(dataset, batch_size=8,
                             shuffle=True,
