@@ -19,7 +19,7 @@ class Logger:
                                     not k.startswith("__")}
             wandb.watch(model, log="all", log_freq=1, log_graph=True)
 
-    def log_metrics(self, losses, accuracies, out, out_sig, target, z, impl_params):
+    def log_metrics(self, losses, accuracies, out, out_sig, target):
         """
         :param losses: list ( float )
         :param accuracies: list ( float )
@@ -36,7 +36,7 @@ class Logger:
             out_sig = out_sig.detach().cpu()
             pred = copy.deepcopy(out_sig).apply_(lambda v: 1 if v > 0.5 else 0)
             target = target.detach().cpu()
-            z = z.detach().cpu()
+            # z = z.detach().cpu()
 
             wandb.log({"accuracy": acc})
             wandb.log({"loss": loss})
@@ -44,18 +44,18 @@ class Logger:
             wandb.log({"out_sig": out_sig})
             wandb.log({"pred": pred})
             wandb.log({"target": target})
-            wandb.log({"z": z})
+            # wandb.log({"z": z})
 
             weights = []
             scales = []
             biases = []
-            for param in impl_params:
-                weights.append(param[0].view(-1))
-                scales.append(param[1].view(-1))
-                biases.append(param[2].view(-1))
-            wandb.log({"w of implicit function": torch.cat(weights)})
-            wandb.log({"scales of implicit function": torch.cat(scales)})
-            wandb.log({"b of implicit function": torch.cat(biases)})
+            # for param in impl_params:
+            #     weights.append(param[0].view(-1))
+            #     scales.append(param[1].view(-1))
+            #     biases.append(param[2].view(-1))
+            # wandb.log({"w of implicit function": torch.cat(weights)})
+            # wandb.log({"scales of implicit function": torch.cat(scales)})
+            # wandb.log({"b of implicit function": torch.cat(biases)})
 
     def log_pcs(self, complete, partial, impl_input, impl_pred):
         """
