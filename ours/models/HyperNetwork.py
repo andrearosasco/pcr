@@ -3,6 +3,18 @@ from torch import nn
 from .Transformer import PCTransformer
 
 
+class HyperNetwork(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.backbone = BackBone(config)
+        self.sdf = ImplicitFunction(config)
+
+    def forward(self, main_in, sec_in):
+        fast_weights, _ = self.backbone(main_in)
+        return self.sdf(sec_in, fast_weights)
+
+
+
 class BackBone(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -47,26 +59,32 @@ class BackBone(nn.Module):
         # global_feature = self.test(xyz)
 
         global_feature = self.transformer(xyz)  # B M C and B M 3
-        impl = []
+        fast_weights = []
         for layer in self.output:
-            impl.append([ly(global_feature) for ly in layer])
+            fast_weights.append([ly(global_feature) for ly in layer])
 
-        return impl, global_feature
+        return fast_weights, global_feature
 
 
 class ImplicitFunction(nn.Module):
 
-    def __init__(self, params):
+    def __init__(self, config, params=None):
         super().__init__()
         self.params = params
         self.relu = nn.LeakyReLU(0.2)
         self.dropout = nn.Dropout(0.5)
-        self.hidden_dim = int(params[0][0].size()[1]/3)
-        # self.norm1 = nn.LayerNorm(64, elementwise_affine=False)
-        # self.norms = nn.ModuleList([nn.LayerNorm(64, elementwise_affine=False),
-        #                             nn.LayerNorm(64, elementwise_affine=False)])
+        self.hidden_dim = config.hidden_dim
 
-    def forward(self, points):
+    def set_params(self, params):
+        self.params = params
+
+    def forward(self, points, params=None):
+        if self.params is None:
+            self.params = params
+
+        if self.params is None:
+            raise ValueError('Can not run forward on uninitialized implicit function')
+
         x = points
         # TODO: I just added unsqueeze(1), reshape(-1) and bmm and everything works (or did I introduce some kind of bug?)
         weights, scales, biases = self.params[0]
@@ -76,10 +94,8 @@ class ImplicitFunction(nn.Module):
 
         x = torch.bmm(x, weights) * scales + biases
         x = self.dropout(x)
-        # x = self.norm1(x)
         x = self.relu(x)
 
-        # for layer, norm in zip(self.params[1:-1], self.norms):
         for layer in self.params[1:-1]:
             weights, scales, biases = layer
 
@@ -89,7 +105,6 @@ class ImplicitFunction(nn.Module):
 
             x = torch.bmm(x, weights) * scales + biases
             x = self.dropout(x)
-            # x = norm(x)
             x = self.relu(x)
 
         weights, scales, biases = self.params[-1]
