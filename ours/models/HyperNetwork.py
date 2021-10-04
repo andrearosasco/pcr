@@ -79,7 +79,7 @@ class ImplicitFunction(nn.Module):
         self.params = params
 
     def forward(self, points, params=None):
-        if self.params is None:
+        if params is not None:
             self.params = params
 
         if self.params is None:

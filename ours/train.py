@@ -66,9 +66,6 @@ if __name__ == '__main__':
             prob = activation(logits).squeeze(-1)
             loss_value = loss(prob, y).sum(dim=1).mean()
 
-            if idx == 1:
-                make_dot(loss_value, params=dict(model.named_parameters())).render("second_call", format="png")
-
             optimizer.zero_grad()
             loss_value.backward()
             optimizer.step()
