@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn.init import trunc_normal_
+
 from .Transformer import PCTransformer
 
 
@@ -51,18 +53,21 @@ class BackBone(nn.Module):
             nn.Linear(config.out_size, 1, bias=True),
         ]))
 
-        # def initialize_transformer(net):
-        #     for m in net.modules():
-        #         if isinstance(m, nn.Linear):
-        #             torch.nn.init.xavier_uniform_(m.weight)
-        #
-        #             if m.bias is not None:
-        #                 nn.init.constant_(m.bias, 0)
-        #
-        # self.apply(initialize_transformer)
-        for parameter in self.parameters():
-            if len(parameter.size()) > 2:
-                torch.nn.init.xavier_uniform_(parameter)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv1d):
+            nn.init.xavier_normal_(m.weight.data, gain=1)
+        elif isinstance(m, nn.BatchNorm1d):
+            nn.init.constant_(m.weight.data, 1)
+            nn.init.constant_(m.bias.data, 0)
 
 
     def forward(self, xyz):
