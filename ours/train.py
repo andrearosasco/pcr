@@ -1,5 +1,7 @@
 import os
+from random import random
 
+import numpy as np
 from torch import nn
 from torch.nn import BCELoss, Sigmoid
 from torch.utils.data import DataLoader
@@ -16,6 +18,18 @@ from utils.logger import Logger
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
+    # Reproducibility
+    seed = 1234
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    g = torch.Generator()
+    g.manual_seed(0)
+
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+    torch.use_deterministic_algorithms(True)
 
     # Load Dataset
     dataset = ShapeNet(DataConfig())
@@ -43,7 +57,7 @@ if __name__ == '__main__':
     dataloader = DataLoader(dataset, batch_size=TrainConfig.mb_size,
                             shuffle=True,
                             drop_last=True,
-                            num_workers=20, pin_memory=True)
+                            num_workers=20, pin_memory=True, generator=g)
 
     losses = []
     accuracy = []
