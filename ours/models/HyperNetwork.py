@@ -14,7 +14,6 @@ class HyperNetwork(nn.Module):
         return self.sdf(sec_in, fast_weights)
 
 
-
 class BackBone(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -34,25 +33,44 @@ class BackBone(nn.Module):
                                          qk_scale=config.qk_scale,
                                          out_size=config.out_size)
 
-        self.output = [[
-                nn.Linear(config.out_size, config.hidden_dim * 3, bias=True).to(config.device),
-                nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
-                nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device)]]
+        self.output = nn.ModuleList([nn.ModuleList([
+                nn.Linear(config.out_size, config.hidden_dim * 3, bias=True),
+                nn.Linear(config.out_size, config.hidden_dim, bias=True),
+                nn.Linear(config.out_size, config.hidden_dim, bias=True)])])
 
         for _ in range(2):
-            self.output.append([
-                    nn.Linear(config.out_size, config.hidden_dim * config.hidden_dim, bias=True).to(config.device),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device)
-                ])
+            self.output.append(nn.ModuleList([
+                    nn.Linear(config.out_size, config.hidden_dim * config.hidden_dim, bias=True),
+                    nn.Linear(config.out_size, config.hidden_dim, bias=True),
+                    nn.Linear(config.out_size, config.hidden_dim, bias=True)
+                ]))
 
-        self.output.append([
-            nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
-            nn.Linear(config.out_size, 1, bias=True).to(config.device),
-            nn.Linear(config.out_size, 1, bias=True).to(config.device),
-        ])
+        self.output.append(nn.ModuleList([
+            nn.Linear(config.out_size, config.hidden_dim, bias=True),
+            nn.Linear(config.out_size, 1, bias=True),
+            nn.Linear(config.out_size, 1, bias=True),
+        ]))
 
-        # self.test = nn.Linear(2048*3, 1024)
+        def initialize_transformer(net):
+            for m in net.modules():
+                if isinstance(m, nn.Linear):
+                    torch.nn.init.xavier_uniform_(m.weight)
+
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
+
+        self.transformer.apply(initialize_transformer)
+
+        def initialize_output(net):
+            for m in net.modules():
+                if isinstance(m, nn.Linear):
+                    nn.init.kaiming_uniform_(m.weight.data)
+
+                if hasattr(a, 'bias') and m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
+
+        self.output.apply(initialize_output)
+
 
     def forward(self, xyz):
         # xyz = torch.reshape(xyz, (xyz.shape[0], -1))

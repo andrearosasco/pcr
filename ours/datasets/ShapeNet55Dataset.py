@@ -1,8 +1,12 @@
 import os
+import time
+
 import numpy as np
 import torch
 import torch.utils.data as data
 
+from configs.cfg1 import DataConfig
+from utils import misc
 from utils.misc import sample_point_cloud
 from .io import IO
 
@@ -50,15 +54,19 @@ class ShapeNet(data.Dataset):
 
         data = IO.get(os.path.join(self.pc_path, sample['file_path'])).astype(np.float32)
         data = self.pc_norm(data)
-        data = torch.from_numpy(data).float()
+        full = torch.from_numpy(data).float()
         # TODO should we have to norm them?
         # They are already between -1/1 but that's true for shapenet points and they are normed
-        imp_x, imp_y = sample_point_cloud(data, self.voxel_size,
+        imp_x, imp_y = sample_point_cloud(full, self.voxel_size,
                                           self.noise_rate,
                                           self.percentage_sampled)
         imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).float()
 
-        return sample['taxonomy_id'], sample['model_id'], data, imp_x, imp_y
+        partial, _ = misc.seprate_point_cloud(full.unsqueeze(0), DataConfig.N_POINTS,
+                                             [int(DataConfig.N_POINTS * 1 / 4), int(DataConfig.N_POINTS * 3 / 4)],
+                                              fixed_points=None)
+
+        return sample['taxonomy_id'], sample['model_id'], partial.squeeze(0), full, imp_x, imp_y
 
     def __len__(self):
         return len(self.file_list)

@@ -45,6 +45,8 @@ class ModelConfig:
 class TrainConfig:
     difficulty = "easy"
     device = device
+    visible_dev = '1'
+    mb_size = 64
     n_epoch = 5
-    log_metrics_every = 100
+    log_metrics_every = 1
     log_pcs_every = 10000
