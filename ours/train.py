@@ -1,5 +1,5 @@
 import os
-from random import random
+import random
 
 import numpy as np
 from torch import nn
