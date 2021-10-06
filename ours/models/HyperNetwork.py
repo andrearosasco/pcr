@@ -51,15 +51,18 @@ class BackBone(nn.Module):
             nn.Linear(config.out_size, 1, bias=True),
         ]))
 
-        def initialize_transformer(net):
-            for m in net.modules():
-                if isinstance(m, nn.Linear):
-                    torch.nn.init.xavier_uniform_(m.weight)
-
-                    if m.bias is not None:
-                        nn.init.constant_(m.bias, 0)
-
-        self.apply(initialize_transformer)
+        # def initialize_transformer(net):
+        #     for m in net.modules():
+        #         if isinstance(m, nn.Linear):
+        #             torch.nn.init.xavier_uniform_(m.weight)
+        #
+        #             if m.bias is not None:
+        #                 nn.init.constant_(m.bias, 0)
+        #
+        # self.apply(initialize_transformer)
+        for parameter in self.parameters():
+            if len(parameter.size()) > 2:
+                torch.nn.init.xavier_uniform_(parameter)
 
 
     def forward(self, xyz):
