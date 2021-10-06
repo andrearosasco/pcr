@@ -59,17 +59,7 @@ class BackBone(nn.Module):
                     if m.bias is not None:
                         nn.init.constant_(m.bias, 0)
 
-        self.transformer.apply(initialize_transformer)
-
-        def initialize_output(net):
-            for m in net.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.kaiming_uniform_(m.weight.data)
-
-                if hasattr(a, 'bias') and m.bias is not None:
-                        nn.init.constant_(m.bias, 0)
-
-        self.output.apply(initialize_output)
+        self.apply(initialize_transformer)
 
 
     def forward(self, xyz):
