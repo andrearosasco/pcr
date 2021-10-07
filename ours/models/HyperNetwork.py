@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn.init import trunc_normal_
+
 from .Transformer import PCTransformer
 
 
@@ -12,7 +14,6 @@ class HyperNetwork(nn.Module):
     def forward(self, main_in, sec_in):
         fast_weights, _ = self.backbone(main_in)
         return self.sdf(sec_in, fast_weights)
-
 
 
 class BackBone(nn.Module):
@@ -34,25 +35,37 @@ class BackBone(nn.Module):
                                          qk_scale=config.qk_scale,
                                          out_size=config.out_size)
 
-        self.output = [[
-                nn.Linear(config.out_size, config.hidden_dim * 3, bias=True).to(config.device),
-                nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
-                nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device)]]
+        self.output = nn.ModuleList([nn.ModuleList([
+                nn.Linear(config.out_size, config.hidden_dim * 3, bias=True),
+                nn.Linear(config.out_size, config.hidden_dim, bias=True),
+                nn.Linear(config.out_size, config.hidden_dim, bias=True)])])
 
         for _ in range(2):
-            self.output.append([
-                    nn.Linear(config.out_size, config.hidden_dim * config.hidden_dim, bias=True).to(config.device),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device)
-                ])
+            self.output.append(nn.ModuleList([
+                    nn.Linear(config.out_size, config.hidden_dim * config.hidden_dim, bias=True),
+                    nn.Linear(config.out_size, config.hidden_dim, bias=True),
+                    nn.Linear(config.out_size, config.hidden_dim, bias=True)
+                ]))
 
-        self.output.append([
-            nn.Linear(config.out_size, config.hidden_dim, bias=True).to(config.device),
-            nn.Linear(config.out_size, 1, bias=True).to(config.device),
-            nn.Linear(config.out_size, 1, bias=True).to(config.device),
-        ])
+        self.output.append(nn.ModuleList([
+            nn.Linear(config.out_size, config.hidden_dim, bias=True),
+            nn.Linear(config.out_size, 1, bias=True),
+            nn.Linear(config.out_size, 1, bias=True),
+        ]))
 
-        # self.test = nn.Linear(2048*3, 1024)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv1d) or isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight.data, gain=1)
+
 
     def forward(self, xyz):
         # xyz = torch.reshape(xyz, (xyz.shape[0], -1))
