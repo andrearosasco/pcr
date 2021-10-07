@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import open3d
 from mpl_toolkits.mplot3d import Axes3D
 import random
 import torch
@@ -8,13 +7,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 from collections import abc
-
-from open3d.open3d.utility import Vector3dVector
-from torch import randn_like
 import tqdm
 from utils.fps import fp_sampling
 from math import ceil
-from utils.mesh_intersection import check_mesh_contains
+import open3d as o3d
 
 
 def fps(data, number):
@@ -245,13 +241,16 @@ def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05, just_tru
     return results
 
 
-def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192):  # 1 2048 3
+def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
     """
+    http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
     Produces input for implicit function
     :param mesh: Open3D mesh
-    :param noise_rate:
-    :param percentage_sampled:
-    :param total:
+    :param noise_rate: rate of gaussian noise added to the point sampled from the mesh
+    :param percentage_sampled: percentage of point that must be sampled uniform
+    :param total: total number of points that must be returned
+    :param tollerance: maximum distance from mesh for a point to be considered 1.
+    :param mode: str, one in ["unsigned", "signed", "occupancy"]
     :return: points (N, 3), occupancies (N,)
     """
     # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
@@ -263,7 +262,7 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192)
     points_surface = np.array(mesh.sample_points_uniformly(n_points_surface).points)
 
     # TODO REMOVE DEBUG ( VISUALIZE POINT CLOUD SAMPLED FROM THE SURFACE )
-    from open3d.open3d.geometry import PointCloud
+    # from open3d.open3d.geometry import PointCloud
     # pc = PointCloud()
     # pc.points = Vector3dVector(points_surface)
     # open3d.visualization.draw_geometries([pc])
@@ -282,9 +281,25 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192)
     # pc.points = Vector3dVector(points)
     # open3d.visualization.draw_geometries([pc])
 
-    occupancies = check_mesh_contains(mesh, points)
+    scene = o3d.t.geometry.RaycastingScene()
+    mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+    _ = scene.add_triangles(mesh)
+    query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)
 
-    return points, occupancies
+    if mode == "unsigned":
+        unsigned_distance = scene.compute_distance(query_points)
+        occupancies1 = -tollerance < unsigned_distance
+        occupancies2 = unsigned_distance < tollerance
+        occupancies = occupancies1 & occupancies2
+    elif mode == "signed":
+        signed_distance = scene.compute_signed_distance(query_points)
+        occupancies = signed_distance < tollerance  # TODO remove this to deal with distances
+    elif mode == "occupancies":
+        occupancies = scene.compute_occupancy(query_points)
+    else:
+        raise NotImplementedError("Mode not implemented")
+
+    return points, occupancies.numpy()
 
 
 def get_ptcloud_img(ptcloud):
@@ -305,7 +320,6 @@ def get_ptcloud_img(ptcloud):
     img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
     img = img.reshape(fig.canvas.get_width_height()[::-1] + (3, ))
     return img
-
 
 
 def visualize_KITTI(path, data_list, titles = ['input','pred'], cmap=['bwr','autumn'], zdir='y', 
