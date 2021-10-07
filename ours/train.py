@@ -52,7 +52,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(params=model.parameters())
 
     # WANDB
-    logger = Logger(model, active=True)
+    logger = Logger(model, active=False)
 
     # Dataset
     # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
@@ -79,7 +79,10 @@ if __name__ == '__main__':
 
             optimizer.zero_grad()
             loss_value.backward()
-            clip_grad_value_(model.parameters(), TrainConfig.clip_value)
+
+            if TrainConfig.clip_value is not None:
+                clip_grad_value_(model.parameters(), TrainConfig.clip_value)
+
             optimizer.step()
 
             # Logs

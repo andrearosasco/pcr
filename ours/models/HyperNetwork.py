@@ -53,19 +53,20 @@ class BackBone(nn.Module):
             nn.Linear(config.out_size, 1, bias=True),
         ]))
 
-        self.apply(self._init_weights)
+        self.transformer.apply(self._init_weights)
+        # for parameter in self.parameters():
+        #     if len(parameter.size()) > 2:
+        #         torch.nn.init.xavier_uniform_(parameter)
 
     def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
+        if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv1d) or isinstance(m, nn.Conv2d):
+        elif isinstance(m, nn.Conv1d) or isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
             nn.init.xavier_normal_(m.weight.data, gain=1)
 
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, xyz):
         # xyz = torch.reshape(xyz, (xyz.shape[0], -1))

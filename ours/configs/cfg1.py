@@ -51,12 +51,12 @@ class TrainConfig:
     difficulty = "easy"
     device = device
     visible_dev = '0'
-    mb_size = 64
+    mb_size = 8
     n_epoch = 20
     clip_value = 5
     log_metrics_every = 1
     log_pcs_every = 10000
     seed = int(datetime.now().timestamp())   # 1234 5678 does not converge
-    num_workers = 40
+    num_workers = 4
     git = git_hash()
 
