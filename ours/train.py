@@ -19,6 +19,7 @@ from utils.logger import Logger
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
     # Reproducibility
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
     seed = TrainConfig.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
