@@ -60,10 +60,10 @@ class BackBone(nn.Module):
             trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
+        elif isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv1d):
+        elif isinstance(m, nn.Conv1d) or isinstance(m, nn.Conv2d):
             nn.init.xavier_normal_(m.weight.data, gain=1)
         elif isinstance(m, nn.BatchNorm1d):
             nn.init.constant_(m.weight.data, 1)
