@@ -51,5 +51,5 @@ class TrainConfig:
     n_epoch = 20
     log_metrics_every = 1
     log_pcs_every = 10000
-    seed = datetime.now()   # 1234 5678 does not converge
+    seed = datetime.now().timestamp()   # 1234 5678 does not converge
     num_workers = 40
