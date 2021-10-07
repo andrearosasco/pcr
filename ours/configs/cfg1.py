@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -46,9 +47,9 @@ class TrainConfig:
     difficulty = "easy"
     device = device
     visible_dev = '0'
-    mb_size = 8
+    mb_size = 64
     n_epoch = 20
     log_metrics_every = 1
     log_pcs_every = 10000
-    seed = 5678   # 1234 does not converge
-    num_workers = 8
+    seed = datetime.now()   # 1234 5678 does not converge
+    num_workers = 40
