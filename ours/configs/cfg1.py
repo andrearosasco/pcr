@@ -45,8 +45,10 @@ class ModelConfig:
 class TrainConfig:
     difficulty = "easy"
     device = device
-    visible_dev = '1'
+    visible_dev = '0'
     mb_size = 64
-    n_epoch = 5
-    log_metrics_every = 1
+    n_epoch = 20
+    log_metrics_every = 100
     log_pcs_every = 10000
+    seed = 5678   # 1234 does not converge
+    num_workers = 40

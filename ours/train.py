@@ -19,7 +19,7 @@ from utils.logger import Logger
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
     # Reproducibility
-    seed = 1234
+    seed = TrainConfig.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -55,9 +55,8 @@ if __name__ == '__main__':
     # Dataset
     # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
     dataloader = DataLoader(dataset, batch_size=TrainConfig.mb_size,
-                            shuffle=True,
-                            drop_last=True,
-                            num_workers=20, pin_memory=True, generator=g)
+                            shuffle=True, drop_last=True,
+                            num_workers=TrainConfig.num_workers, pin_memory=True, generator=g)
 
     losses = []
     accuracy = []
