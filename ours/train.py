@@ -30,7 +30,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    torch.use_deterministic_algorithms(True)
+    # torch.use_deterministic_algorithms(True)
 
     # Load Dataset
     dataset = ShapeNet(DataConfig())
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(params=model.parameters())
 
     # WANDB
-    logger = Logger(model, active=True)
+    logger = Logger(model, active=False)
 
     # Dataset
     # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
@@ -92,7 +92,7 @@ if __name__ == '__main__':
                 accuracy.append((torch.sum((pred == y)) / torch.numel(pred)).item())
 
                 if idx % TrainConfig().log_metrics_every == 0:  # Log numerical stuff
-                    logger.log_metrics(losses, accuracy, pred, prob, y)
+                    logger.log_metrics(losses, accuracy, pred, prob, y, idx)
                     losses = []
                     accuracy = []
 

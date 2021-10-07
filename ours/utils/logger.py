@@ -19,7 +19,7 @@ class Logger:
                                     not k.startswith("__")}
             wandb.watch(model, log="all", log_freq=1, log_graph=True)
 
-    def log_metrics(self, losses, accuracies, out, out_sig, target):
+    def log_metrics(self, losses, accuracies, out, out_sig, target, step):
         """
         :param losses: list ( float )
         :param accuracies: list ( float )
@@ -38,12 +38,12 @@ class Logger:
             target = target.detach().cpu()
             # z = z.detach().cpu()
 
-            wandb.log({"accuracy": acc})
-            wandb.log({"loss": loss})
-            wandb.log({"out": out})
-            wandb.log({"out_sig": out_sig})
-            wandb.log({"pred": pred})
-            wandb.log({"target": target})
+            wandb.log({"accuracy": acc, 'step': step})
+            wandb.log({"loss": loss, 'step': step})
+            wandb.log({"out": out, 'step': step})
+            wandb.log({"out_sig": out_sig, 'step': step})
+            wandb.log({"pred": pred, 'step': step})
+            wandb.log({"target": target, 'step': step})
             # wandb.log({"z": z})
 
             weights = []

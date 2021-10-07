@@ -51,4 +51,4 @@ class TrainConfig:
     log_metrics_every = 100
     log_pcs_every = 10000
     seed = 5678   # 1234 does not converge
-    num_workers = 40
+    num_workers = 8
