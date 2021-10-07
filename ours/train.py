@@ -4,6 +4,7 @@ import random
 import numpy as np
 from torch import nn
 from torch.nn import BCELoss, Sigmoid
+from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
 
 from datasets.ShapeNet55Dataset import ShapeNet
@@ -78,6 +79,7 @@ if __name__ == '__main__':
 
             optimizer.zero_grad()
             loss_value.backward()
+            clip_grad_value_(model.parameters(), TrainConfig.clip_value)
             optimizer.step()
 
             # Logs
