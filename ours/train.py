@@ -51,7 +51,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(params=model.parameters())
 
     # WANDB
-    logger = Logger(model, active=False)
+    logger = Logger(model, active=True)
 
     # Dataset
     # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
