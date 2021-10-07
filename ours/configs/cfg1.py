@@ -1,3 +1,4 @@
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
@@ -42,6 +43,9 @@ class ModelConfig:
     hidden_dim = 32
 
 
+def git_hash() -> str:
+    return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+
 @dataclass
 class TrainConfig:
     difficulty = "easy"
@@ -53,3 +57,5 @@ class TrainConfig:
     log_pcs_every = 10000
     seed = int(datetime.now().timestamp())   # 1234 5678 does not converge
     num_workers = 40
+    git = git_hash()
+
