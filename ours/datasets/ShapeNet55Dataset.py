@@ -4,7 +4,7 @@ import torch
 import torch.utils.data as data
 
 from utils.misc import sample_point_cloud
-from .io import IO
+from .fgyujhgfdxsdf import IO
 
 
 class ShapeNet(data.Dataset):

@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
     for parameter in model.parameters():
         if len(parameter.size()) > 2:
-            torch.nn.init.xavier_uniform_(parameter)
+            torch.nn.init.uniform_(parameter)
     model.to(TrainConfig().device)
     model.train()
 
@@ -34,11 +34,11 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(params=model.parameters())
 
     # WANDB
-    logger = Logger(model, active=False)
+    logger = Logger(model, active=True)
 
     # Dataset
     # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
-    dataloader = DataLoader(dataset, batch_size=1,
+    dataloader = DataLoader(dataset, batch_size=64,
                             shuffle=True,
                             drop_last=True,
                             num_workers=10, pin_memory=True)
@@ -49,7 +49,6 @@ if __name__ == '__main__':
     for e in range(TrainConfig().n_epoch):
         for idx, (taxonomy_ids, model_ids, data, imp_x, imp_y) in enumerate(
                 tqdm(dataloader, position=0, leave=True, desc="Epoch " + str(e))):
-
             gt = data.to(TrainConfig().device)
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
 
@@ -57,14 +56,13 @@ if __name__ == '__main__':
                                                   [int(DataConfig().N_POINTS * 1 / 4), int(DataConfig().N_POINTS * 3 / 4)],
                                                   fixed_points=None)
             partial = partial.cuda()
-            start = time.time()
 
             logits = model(partial, x)
 
             prob = activation(logits).squeeze(-1)
             loss_value = loss(prob, y).sum(dim=1).mean()
 
-            make_dot(loss_value, params=dict(model.named_parameters())).render(str(idx)+" second_call", format="png")
+            # make_dot(loss_value, params=dict(model.named_parameters())).render(str(idx)+" second_call", format="png")
 
             optimizer.zero_grad()
             loss_value.backward()
