@@ -29,21 +29,30 @@ class ShapeNet(data.Dataset):
         return pcs
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
+        idx = 1
         # Get label
         with open(self.data_root + os.sep + str(idx) + os.sep + "label.txt") as file:
             label = file.read()
 
         # Extract point cloud from mesh
-        tm = o3d.io.read_triangle_mesh(self.data_root + os.sep + str(idx) + os.sep + "model.obj")
-        tm = tm.compute_vertex_normals()
+        tm = o3d.io.read_triangle_mesh(self.data_root + os.sep + str(idx) + os.sep + "model.obj", True)
+        # # TODO TRY
+        # import cv2
+        # img1 = cv2.imread(self.data_root + os.sep + str(idx) + os.sep + "images/texture0.jpg")
+        # img2 = cv2.imread(self.data_root + os.sep + str(idx) + os.sep + "images/texture1.jpg")
+        # tm.textures = [o3d.geometry.Image(img1), o3d.geometry.Image(img2)]
+        # TODO END TRY
+        tm.compute_vertex_normals()
         p = tm.sample_points_uniformly(self.n_points)
 
-        # # TODO CONTINUE SEEMS LIKE BY SAMPLING POINTS WE ARE NOT SAMPLING COLORS
-        # if os.path.isdir(self.data_root + os.sep + str(idx) + os.sep + "images"):
-        #     print("COLORED")  # TODO REMOVE DEBUG
-        #     o3d.visualization.draw_geometries([tm])  # TODO REMOVE DEBUG ( VISUALIZE MESH )
-        #     o3d.visualization.draw_geometries([p])  # TODO REMOVE DEBUG ( VISUALIZE COMPLETE POINT CLOUD )
-        #     print("bau")
+        # TODO CONTINUE SEEMS LIKE BY SAMPLING POINTS WE ARE NOT SAMPLING COLORS
+        if os.path.isdir(self.data_root + os.sep + str(idx) + os.sep + "images"):
+            print("COLORED")  # TODO REMOVE DEBUG
+            print(tm.has_textures())
+            o3d.visualization.draw_geometries([tm])  # TODO REMOVE DEBUG
+            # o3d.visualization.draw_geometries([tm])  # TODO REMOVE DEBUG ( VISUALIZE MESH )
+            o3d.visualization.draw_geometries([p])  # TODO REMOVE DEBUG ( VISUALIZE COMPLETE POINT CLOUD )
+            print("bau")
 
         complete_xyz = np.array(p.points)
         complete_xyz = self.pc_norm(complete_xyz)

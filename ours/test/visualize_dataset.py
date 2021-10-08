@@ -11,7 +11,7 @@ import open3d as o3d
 if __name__ == "__main__":
     dataset = ShapeNet(DataConfig())
     loader = DataLoader(dataset, batch_size=1,
-                        shuffle=True,
+                        shuffle=False,
                         drop_last=True,
                         num_workers=1, pin_memory=True)
     for elem in tqdm(loader):
@@ -28,7 +28,7 @@ if __name__ == "__main__":
         comp_colors = comp_colors.squeeze()
 
         # TODO REMOVE DEBUG ( VISUALIZE INPUT FOR BACKBONE STILL TO CROP )
-        # IF ALL POINTS ARE WHITE, CHANGE TO BLACK
+        # # IF ALL POINTS ARE WHITE, CHANGE TO BLACK
         original = True
         if len(comp_colors) == 0 or comp_colors.min() == comp_colors.max() == 1.:
             comp_colors.fill_(0.)
@@ -38,8 +38,8 @@ if __name__ == "__main__":
         pc.points = Vector3dVector(comp_xyz)
         pc.colors = Vector3dVector(comp_colors)
         o3d.visualization.draw_geometries([pc], window_name="original" if original else "White converted to black")
-
-        # TODO REMOVE DEBUG ( VISUALIZE IMPLICIT FUNCTION INPUT WITH LABELS )
+        #
+        # # TODO REMOVE DEBUG ( VISUALIZE IMPLICIT FUNCTION INPUT WITH LABELS )
         pc = PointCloud()
         pc.points = Vector3dVector(x)
         colors = []
