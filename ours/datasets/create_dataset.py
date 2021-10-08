@@ -32,7 +32,6 @@ if __name__ == "__main__":
         for index in id_objects.keys():
             print("Class: ", id_objects[index])
             zip_data = BytesIO(zip_ref.read("ShapeNetCore.v1/" + index + ".zip"))
-
             # Open the zip which contains the objects of that class
             with ZipFile(zip_data) as data:
                 list_of_files = data.namelist()
@@ -41,29 +40,31 @@ if __name__ == "__main__":
                     if elem.endswith(".obj"):
                         objects.append(elem)
                 # For each object of that class
+                class_path = out_path + os.sep + id_objects[index]
                 for elem in tqdm.tqdm(objects):
                     # Create output directory
-                    os.mkdir(out_path + os.sep + str(i))
+                    object_path = class_path + os.sep + str(i)
+                    os.mkdir(object_path)
                     # Extract mesh and move it in the right folder
                     path = data.extract(elem)
-                    os.rename(path, out_path + os.sep + str(i) + os.sep + "model.obj")
+                    os.rename(path, object_path + os.sep + "model.obj")
                     path2 = data.extract(elem[:-4] + ".mtl")
-                    os.rename(path2, out_path + os.sep + str(i) + os.sep + "model.mtl")
+                    os.rename(path2, object_path + os.sep + "model.mtl")
                     # Get images if exist
                     img_path = elem.split("/")[0] + "/" + elem.split("/")[1] + "/" + "images/"
                     if img_path in list_of_files:
-                        os.mkdir(out_path + os.sep + str(i) + os.sep + "images")
+                        os.mkdir(object_path + os.sep + "images")
                         images = [elem for elem in list_of_files if elem.startswith(img_path) and elem != img_path]
                         for image in images:
                             path3 = data.extract(image)
-                            os.rename(path3, out_path+os.sep+str(i)+os.sep+"images"+os.sep+path3.split(os.sep)[-1])
+                            os.rename(path3, object_path + os.sep + "images" + os.sep + path3.split(os.sep)[-1])
                     # Write label
-                    with open(out_path + os.sep + str(i) + os.sep + "label.txt", "w") as out_label:
+                    with open(object_path + os.sep + "label.txt", "w") as out_label:
                         out_label.write(id_objects[index])
                     i += 1
 
                     # Remove object directory
-                    shutil.rmtree(os.sep.join(path.split(os.sep)[:-2]))
+                    shutil.rmtree(os.sep.join(path.split(os.sep)[:-1]))
 
                 # Remove class directory
-                shutil.rmtree(os.sep.join(path.split(os.sep)[:-3]))
+                shutil.rmtree(os.sep.join(path.split(os.sep)[:-2]))
