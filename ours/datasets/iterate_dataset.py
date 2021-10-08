@@ -1,4 +1,5 @@
 import os
+import tqdm
 
 
 class DatasetIterator:
@@ -38,7 +39,7 @@ class DatasetIterator:
         val = []
         test = []
 
-        for c in classes:
+        for c in tqdm.tqdm(classes):
             # Get samples of that class and divide it into train val and test
             files = os.listdir(self.data_path + os.sep + c)
             for_train = int(len(files) * self.train_size)
@@ -68,6 +69,18 @@ class DatasetIterator:
         assert len(train) == max_train*len(classes)
         assert len(val) == max_val*len(classes)
         assert len(test) == max_test*len(classes)
+
+        with open("train.txt", "w") as outfile:
+            for elem in train:
+                outfile.write(elem + '\n')
+
+        with open("val.txt", "w") as outfile:
+            for elem in val:
+                outfile.write(elem + '\n')
+
+        with open("test.txt", "w") as outfile:
+            for elem in test:
+                outfile.write(elem + '\n')
 
 
 if __name__ == "__main__":
