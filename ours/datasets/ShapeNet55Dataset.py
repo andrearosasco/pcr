@@ -8,7 +8,7 @@ import torch.utils.data as data
 from configs.cfg1 import DataConfig
 from utils import misc
 from utils.misc import sample_point_cloud
-from .io import IO
+from .fgyujhgfdxsdf import IO
 
 
 class ShapeNet(data.Dataset):

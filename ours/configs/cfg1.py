@@ -17,8 +17,11 @@ class DataConfig:
     subset = "train"
     PC_PATH = Path("../data") / "ShapeNet55-34" / "shapenet_pc"
     voxel_size = 0.1
-    noise_rate = 0.1
+    noise_rate = 0.03
     percentage_sampled = 0.1
+    # OurShapeNet
+    raw_path = "../../ShapeNetCore.v1.zip"
+    prep_path = "../datasets/labelled_rgb_meshes"
 
 
 @dataclass

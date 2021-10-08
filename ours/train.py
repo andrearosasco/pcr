@@ -40,6 +40,10 @@ if __name__ == '__main__':
     model = HyperNetwork(ModelConfig())
     model = nn.DataParallel(model)
 
+    for parameter in model.parameters():
+        if len(parameter.size()) > 2:
+            torch.nn.init.uniform_(parameter)
+
     model.to(TrainConfig().device)
     model.train()
 
@@ -66,11 +70,14 @@ if __name__ == '__main__':
     for e in range(TrainConfig().n_epoch):
         for idx, (taxonomy_ids, model_ids, partial, data, imp_x, imp_y) in enumerate(
                 tqdm(dataloader, position=0, leave=True, desc="Epoch " + str(e))):
-
             gt = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
 
+            partial, _ = misc.seprate_point_cloud(gt, DataConfig().N_POINTS,
+                                                  [int(DataConfig().N_POINTS * 1 / 4), int(DataConfig().N_POINTS * 3 / 4)],
+                                                  fixed_points=None)
+            partial = partial.cuda()
 
             logits = model(partial, x)
 

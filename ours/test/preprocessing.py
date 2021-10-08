@@ -38,17 +38,17 @@ if __name__ == "__main__":
         # WHOLE
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(imp_x[0])
-        o3d.visualization.draw_geometries([pcd])
+        # o3d.visualization.draw_geometries([pcd])
 
         # TRUE AFTER NOISE AND VOXEL
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(true)
-        o3d.visualization.draw_geometries([pcd])
+        # o3d.visualization.draw_geometries([pcd])
 
         # FALSE AFTER NOISE AND VOXEL
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(false)
-        o3d.visualization.draw_geometries([pcd])
+        # o3d.visualization.draw_geometries([pcd])
 
         # WITH CLASS
         pcd = o3d.geometry.PointCloud()

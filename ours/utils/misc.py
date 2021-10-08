@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import open3d
 from mpl_toolkits.mplot3d import Axes3D
 import random
 import torch
@@ -8,10 +7,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 from collections import abc
-
-from torch import randn_like
-
+import tqdm
 from utils.fps import fp_sampling
+from math import ceil
+import open3d as o3d
 
 
 def fps(data, number):
@@ -188,15 +187,38 @@ def seprate_point_cloud(xyz, num_points, crop, fixed_points = None, padding_zero
 
     return input_data.contiguous(), crop_data.contiguous()
 
-def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05):
-    x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
-    y_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
-    z_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
+
+def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05, just_true=False, bs=2, nz=41,
+                           device="cuda:0"):
+    """
+    # GET AN IMPLICIT FUNCTION THAT WORKS WITH BATCHES AND DOES UNIFORM SAMPLING FOR bs BATCHES
+    :param model: Iterable of ImplicitFunction
+    :param min_value:
+    :param max_value:
+    :param step:
+    :param just_true:
+    :param bs: expected batch size
+    :param nz: number of layer to give in a single time
+    :param device: device where to do operation
+    :return: FloatTensor( n_points, 3 if just_true else 4 ( also class ) )
+    """
+    x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step)).to(device)
+    y_range = torch.FloatTensor(np.arange(min_value, max_value + step, step)).to(device)
+    z_range = torch.FloatTensor(np.arange(min_value, max_value + step, step)).to(device)
     grid_2d = torch.cartesian_prod(x_range, y_range)
+
+    n_cycle = range(ceil(len(z_range) / nz))
+
     results = []
-    for z in tqdm.tqdm(z_range):
-        repeated_z = z.reshape(1, 1).repeat(grid_2d.shape[0], 1)
-        grid_3d = torch.cat((grid_2d, repeated_z), dim=1)
+    for i in tqdm.tqdm(n_cycle):
+        useful = []
+        for k in range(nz):
+            if i*nz + k < len(z_range):
+                useful.append(z_range[i*nz + k])
+
+        actual = len(useful)
+        zs = torch.stack(useful).unsqueeze(-1).T.repeat(len(grid_2d), 1).T.reshape((len(grid_2d)*actual, 1))
+        grid_3d = torch.cat((grid_2d.repeat(actual, 1), zs), dim=1)
 
         # TODO REMOVE DEBUG
         # pcd = o3d.geometry.PointCloud()
@@ -204,65 +226,80 @@ def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05):
         # draw_geometries([pcd])
         # TODO END DEBUG
 
-        result = model(grid_3d)
-        result = torch.cat((grid_3d, result), dim=-1)
-        good_ids = torch.nonzero(result[..., -1] == 1.).squeeze(1)
-        result = result[good_ids]
-        results.append(result[..., :-1])
+        grid_3d = grid_3d.repeat(bs, 1, 1)  # add batch dimension
+        res = model(grid_3d)  # remove batch dimension
+        grid_3d = grid_3d.squeeze()
 
-    return torch.cat(results, dim=0)
-
-
-def sample_point_cloud(xyz, voxel_size=0.1, noise_rate=0.1, percentage_sampled=0.1):  # 1 2048 3
-    # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
-    # VOXEL
-    xyz = xyz.cpu()
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(xyz)
-    voxel_grid = open3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
-    # open3d.visualization.draw_geometries([voxel_grid])
-
-    # ORIGINAL PC
-    # pcd = open3d.geometry.PointCloud()
-    # pcd.points = open3d.utility.Vector3dVector(xyz)
-    # open3d.open3d.visualization.draw_geometries([pcd])
-
-    # WITH GAUSSIAN NOISE
-    z = randn_like(xyz) * noise_rate
-    xyz = xyz + z
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(xyz)
-    # open3d.open3d.visualization.draw_geometries([pcd])
-
-    # WITH 10% UNIFORM RANDOM POINTS
-    k = int(len(xyz) * percentage_sampled)
-    random_points = torch.FloatTensor(k, 3).uniform_(-1, 1)
-    pcd = open3d.geometry.PointCloud()
-    xyz = torch.cat((xyz, random_points))
-    pcd.points = open3d.utility.Vector3dVector(xyz)
-    # open3d.open3d.visualization.draw_geometries([pcd])
-
-    # WITH LABEL
-    results = voxel_grid.check_if_included(open3d.utility.Vector3dVector(xyz))
-    colors = np.zeros((len(xyz), 3))
-    for i, value in enumerate(results):
-        if value:
-            colors[i] = np.array([0, 0, 1])
+        result = torch.cat((grid_3d, res), dim=-1)
+        if just_true:
+            good_ids = torch.nonzero(result[..., -1] == 1.).squeeze(1)
+            result = result[good_ids]
+            results.append(result[..., :-1])
         else:
-            colors[i] = np.array([0, 1, 0])
-    pcd.colors = open3d.utility.Vector3dVector(colors)
-    # open3d.open3d.visualization.draw_geometries([pcd])
+            results.append(result)
+    results = torch.cat([t for t in results], dim=1)
+    return results
 
-    # t = 0
-    # f = 0
-    # for elem in results:
-    #     if elem:
-    #         t += 1
-    #     else:
-    #         f += 1
-    # print("Found ", t, " points inside the voxels and ", f, " points outside the voxel")
 
-    return np.array(pcd.points), np.array(results)
+def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
+    """
+    http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
+    Produces input for implicit function
+    :param mesh: Open3D mesh
+    :param noise_rate: rate of gaussian noise added to the point sampled from the mesh
+    :param percentage_sampled: percentage of point that must be sampled uniform
+    :param total: total number of points that must be returned
+    :param tollerance: maximum distance from mesh for a point to be considered 1.
+    :param mode: str, one in ["unsigned", "signed", "occupancy"]
+    :return: points (N, 3), occupancies (N,)
+    """
+    # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
+    n_points_uniform = int(total * percentage_sampled)
+    n_points_surface = total - n_points_uniform
+
+    points_uniform = np.random.rand(n_points_uniform, 3) - 0.5
+
+    points_surface = np.array(mesh.sample_points_uniformly(n_points_surface).points)
+
+    # TODO REMOVE DEBUG ( VISUALIZE POINT CLOUD SAMPLED FROM THE SURFACE )
+    # from open3d.open3d.geometry import PointCloud
+    # pc = PointCloud()
+    # pc.points = Vector3dVector(points_surface)
+    # open3d.visualization.draw_geometries([pc])
+
+    points_surface = points_surface + (noise_rate * np.random.randn(len(points_surface), 3))
+
+    # TODO REMOVE DEBUG ( VISUALIZE POINT CLOUD FROM SURFACE + SOME NOISE )
+    # pc = PointCloud()
+    # pc.points = Vector3dVector(points_surface)
+    # open3d.visualization.draw_geometries([pc])
+
+    points = np.concatenate([points_uniform, points_surface], axis=0)
+
+    # TODO REMOVE DEBUG ( VISUALIZE ALL POINTS WITHOUT LABEL )
+    # pc = PointCloud()
+    # pc.points = Vector3dVector(points)
+    # open3d.visualization.draw_geometries([pc])
+
+    scene = o3d.t.geometry.RaycastingScene()
+    mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+    _ = scene.add_triangles(mesh)
+    query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)
+
+    if mode == "unsigned":
+        unsigned_distance = scene.compute_distance(query_points)
+        occupancies1 = -tollerance < unsigned_distance
+        occupancies2 = unsigned_distance < tollerance
+        occupancies = occupancies1 & occupancies2
+    elif mode == "signed":
+        signed_distance = scene.compute_signed_distance(query_points)
+        occupancies = signed_distance < tollerance  # TODO remove this to deal with distances
+    elif mode == "occupancies":
+        occupancies = scene.compute_occupancy(query_points)
+    else:
+        raise NotImplementedError("Mode not implemented")
+
+    return points, occupancies.numpy()
 
 
 def get_ptcloud_img(ptcloud):
@@ -283,7 +320,6 @@ def get_ptcloud_img(ptcloud):
     img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
     img = img.reshape(fig.canvas.get_width_height()[::-1] + (3, ))
     return img
-
 
 
 def visualize_KITTI(path, data_list, titles = ['input','pred'], cmap=['bwr','autumn'], zdir='y', 
