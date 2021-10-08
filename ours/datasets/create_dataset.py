@@ -41,6 +41,8 @@ if __name__ == "__main__":
                         objects.append(elem)
                 # For each object of that class
                 class_path = out_path + os.sep + id_objects[index]
+                os.mkdir(class_path)
+                i = 0
                 for elem in tqdm.tqdm(objects):
                     # Create output directory
                     object_path = class_path + os.sep + str(i)

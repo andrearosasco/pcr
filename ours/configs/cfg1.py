@@ -20,8 +20,8 @@ class DataConfig:
     noise_rate = 0.03
     percentage_sampled = 0.1
     # OurShapeNet
-    raw_path = "../../ShapeNetCore.v1.zip"
-    prep_path = "../datasets/labelled_rgb_meshes"
+    raw_path = "../../ShapeNetCore.v1.zip"  # Shapenet zip
+    prep_path = "C:/Users/sberti/Desktop/labelled_rgb_data"  # Preprocessed Shapenet
 
 
 @dataclass
