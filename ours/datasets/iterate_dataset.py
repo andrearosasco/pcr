@@ -3,11 +3,12 @@ import tqdm
 
 
 class DatasetIterator:
-    def __init__(self, data_path, train_val_test_ratio):
+    def __init__(self, data_path, train_val_test_ratio, out_path):
         self.data_path = data_path
         self.train_size = train_val_test_ratio[0]
         self.val_size = train_val_test_ratio[1]
         self.test_size = train_val_test_ratio[2]
+        self.out_path = out_path
 
     def generate_train_val_test_txt(self):
         """
@@ -24,6 +25,8 @@ class DatasetIterator:
             classes_length[c] = len(os.listdir(self.data_path + os.sep + c))
 
         print(classes_length)
+
+        # TODO ADD FLAG TO DISABLE OVERSAMPLING
 
         max_length = max(classes_length.values())
         max_train = int(max_length * self.train_size)
@@ -45,6 +48,7 @@ class DatasetIterator:
             for_train = int(len(files) * self.train_size)
             for_val = int(len(files) * self.val_size)
             train_local = files[:for_train]
+
             val_local = files[for_train:(for_train + for_val)]
             test_local = files[(for_train + for_val):]
             # Train
@@ -70,20 +74,23 @@ class DatasetIterator:
         assert len(val) == max_val*len(classes)
         assert len(test) == max_test*len(classes)
 
-        with open("train.txt", "w") as outfile:
+        val = set(val)  # TODO DO IN A BETTER WAY WHEN YOU HAVE TIME
+        test = set(test)  # TODO DO IN A BETTER WAY WHEN YOU HAVE TIME
+
+        with open(self.out_path + os.sep + "train.txt", "w") as outfile:
             for elem in train:
                 outfile.write(elem + '\n')
 
-        with open("val.txt", "w") as outfile:
+        with open(self.out_path + os.sep + "val.txt", "w") as outfile:
             for elem in val:
                 outfile.write(elem + '\n')
 
-        with open("test.txt", "w") as outfile:
+        with open(self.out_path + os.sep + "test.txt", "w") as outfile:
             for elem in test:
                 outfile.write(elem + '\n')
 
 
 if __name__ == "__main__":
     from configs.cfg1 import DataConfig
-    iterator = DatasetIterator(DataConfig.prep_path, [0.7, 0.2, 0.1])
+    iterator = DatasetIterator(DataConfig.prep_path, [0.7, 0.2, 0.1], DataConfig.txts_path)
     iterator.generate_train_val_test_txt()

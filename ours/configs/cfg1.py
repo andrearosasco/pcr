@@ -17,11 +17,12 @@ class DataConfig:
     subset = "train"
     PC_PATH = Path("../data") / "ShapeNet55-34" / "shapenet_pc"
     voxel_size = 0.1
-    noise_rate = 0.03
+    noise_rate = 0.02
     percentage_sampled = 0.1
     # OurShapeNet
     raw_path = "../../ShapeNetCore.v1.zip"  # Shapenet zip
-    prep_path = "C:/Users/sberti/Desktop/labelled_rgb_data"  # Preprocessed Shapenet
+    prep_path = "C:/Users/sberti/Desktop/data/labelled_rgb_data"  # Preprocessed Shapenet
+    txts_path = "C:/Users/sberti/Desktop/data/"  # Where to save the .txt indices files
 
 
 @dataclass
