@@ -23,7 +23,6 @@ class IO:
     @classmethod
     def _read_npy(cls, file_path):
         return np.load(file_path)
-       
     # References: https://github.com/dimatura/pypcd/blob/master/pypcd/pypcd.py#L275
     # Support PCD files without compression ONLY!
     @classmethod
