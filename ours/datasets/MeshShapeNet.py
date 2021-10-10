@@ -10,17 +10,18 @@ from utils.misc import sample_point_cloud
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config):
+    def __init__(self, config, mode):
         #  Backbone Input
         self.data_root = config.prep_path
         self.n_points = config.N_POINTS
+        self.mode = mode
 
         # Implicit function input
         self.noise_rate = config.noise_rate
         self.percentage_sampled = config.percentage_sampled
 
         self.txts_path = config.txts_path
-        self.train_txt_path = self.txts_path + os.sep + "train.txt"
+        self.train_txt_path = self.txts_path + os.sep + self.mode + ".txt"
 
         with open(self.train_txt_path, "r") as file:
             lines = file.readlines()
@@ -40,6 +41,7 @@ class ShapeNet(data.Dataset):
         return pcs
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
+        # RETURN MESH,
         # Get label
         dir_path = self.data_root + os.sep + self.train_paths[idx].strip()
         with open(dir_path + os.sep + "label.txt") as file:
