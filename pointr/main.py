@@ -32,7 +32,7 @@ def main():
     if not args.test:
         if args.local_rank == 0:
             train_writer = SummaryWriter(os.path.join(args.tfboard_path, 'train'))
-            val_writer = SummaryWriter(os.path.join(args.tfboard_path, 'test'))
+            val_writer = SummaryWriter(os.path.join(args.tfboard_path, 'forge'))
         else:
             train_writer = None
             val_writer = None

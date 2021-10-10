@@ -6,3 +6,4 @@ wandb
 data
 ShapeNetCore.v1.zip
 ours/datasets/labelled_rgb_meshes
+/pointr/
