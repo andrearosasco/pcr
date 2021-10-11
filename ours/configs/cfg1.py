@@ -20,8 +20,8 @@ class DataConfig:
     noise_rate = 0.02
     percentage_sampled = 0.1
     # OurShapeNet
-    raw_path = "../../data/ShapeNetCore.v2.zip"
-    prep_path = "../../data/ShapeNetCore.v2"
+    dataset_path = "../../data/ShapeNetCore.v2"
+    mode = 'train' # train, valid, test
 
 
 @dataclass

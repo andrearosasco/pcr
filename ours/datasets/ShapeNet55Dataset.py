@@ -8,7 +8,6 @@ import torch.utils.data as data
 from configs.cfg1 import DataConfig
 from utils import misc
 from utils.misc import sample_point_cloud
-from .fgyujhgfdxsdf import IO
 
 
 class ShapeNet(data.Dataset):
@@ -52,7 +51,7 @@ class ShapeNet(data.Dataset):
     def __getitem__(self, idx):
         sample = self.file_list[idx]
 
-        data = IO.get(os.path.join(self.pc_path, sample['file_path'])).astype(np.float32)
+        data = np.load(os.path.join(self.pc_path, sample['file_path'])).astype(np.float32)
         data = self.pc_norm(data)
         full = torch.from_numpy(data).float()
         # TODO should we have to norm them?
