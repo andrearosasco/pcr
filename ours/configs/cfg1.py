@@ -11,16 +11,16 @@ device = "cuda"
 
 @dataclass
 class DataConfig:
-    DATA_PATH = Path("../data") / "ShapeNet55-34" / "ShapeNet-55"
+    DATA_PATH = Path("data") / "ShapeNet55-34" / "ShapeNet-55"
     NAME = "ShapeNet"
     N_POINTS = 8192
     subset = "train"
-    PC_PATH = Path("../data") / "ShapeNet55-34" / "shapenet_pc"
+    PC_PATH = Path("data") / "ShapeNet55-34" / "shapenet_pc"
     voxel_size = 0.1
     noise_rate = 0.02
     percentage_sampled = 0.1
     # OurShapeNet
-    dataset_path = "../../data/ShapeNetCore.v2"
+    dataset_path = "../data/ShapeNetCore.v2"
     mode = 'train' # train, valid, test
 
 
@@ -57,7 +57,7 @@ class TrainConfig:
     mb_size = 8
     n_epoch = 20
     clip_value = 5
-    log_metrics_every = 1
+    log_metrics_every = 100
     log_pcs_every = 10000
     seed = int(datetime.now().timestamp())   # 1234 5678 does not converge
     num_workers = 4
