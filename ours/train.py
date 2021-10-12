@@ -72,7 +72,7 @@ if __name__ == '__main__':
                 tqdm(dataloader, position=0, leave=True, desc="Epoch " + str(e))):
             gt = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
-            x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)Chan
+            x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
 
             logits = model(partial, x)
 
