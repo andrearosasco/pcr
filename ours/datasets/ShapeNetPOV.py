@@ -1,4 +1,5 @@
 import os
+import random
 from pathlib import Path
 
 import numpy as np
@@ -6,11 +7,14 @@ import cv2
 import torch
 import torch.utils.data as data
 import open3d as o3d
-from open3d.cpu.pybind.geometry import PointCloud
+from numpy import cos, sin
+from open3d.cpu.pybind.geometry import PointCloud, TriangleMesh
 from open3d.cpu.pybind.utility import Vector3dVector
-from open3d.cpu.pybind.visualization import draw_geometries
+from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
 
 from utils.misc import sample_point_cloud
+
+
 
 
 class ShapeNet(data.Dataset):
@@ -52,41 +56,28 @@ class ShapeNet(data.Dataset):
         # Extract point cloud from mesh
         tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
 
-        complete_pcd = tm.sample_points_uniformly(self.n_points)
+        complete_pcd = tm.sample_points_uniformly(self.n_points*10)
 
         diameter = np.linalg.norm(
             np.asarray(complete_pcd.get_max_bound()) - np.asarray(complete_pcd.get_min_bound()))
-        camera = [1, 0, diameter]
-        radius = diameter * 100
-        _, pt_map = complete_pcd.hidden_point_removal(camera, radius * 4)
+
+        z = random.uniform(-diameter, diameter)
+        theta = random.uniform(0, 2*np.pi)
+        x = ((diameter)**2 - z**2) * cos(theta)
+        y = ((diameter)**2 - z**2) * sin(theta)
+
+        camera = [x, y, z]
+        f = TriangleMesh.create_coordinate_frame(size=1, origin=camera)
+
+        radius = np.sqrt(diameter**2 - z**2) * 100
+
+        _, pt_map = complete_pcd.hidden_point_removal(camera, radius*4)
         partial_pcd = complete_pcd.select_by_index(pt_map)
-        # TODO Start Remove
-        img_width = 640
-        img_height = 480
-        render = o3d.visualization.rendering.OffscreenRenderer(img_width, img_height)
-        # Optionally set the camera field of view (to zoom in a bit)
-        vertical_field_of_view = 15.0  # between 5 and 90 degrees
-        aspect_ratio = img_width / img_height  # azimuth over elevation
-        near_plane = 0.1
-        far_plane = 50.0
-        fov_type = o3d.visualization.rendering.Camera.FovType.Vertical
-        render.scene.camera.set_projection(vertical_field_of_view, aspect_ratio, near_plane, far_plane, fov_type)
 
-        # Look at the origin from the front (along the -Z direction, into the screen), with Y as Up.
-        center = [0, 0, 0]  # look_at target
-        eye = [1, 0, diameter]  # camera position
-        up = [0, 1, 0]  # camera orientation
-        render.scene.camera.look_at(center, eye, up)
+        # tm.compute_vertex_normals()
+        # draw_geometries([tm])
+        draw_geometries([partial_pcd], lookat=[0, 0, 0], up=[0, 1, 0], front=camera, zoom=1)
 
-        # Read the image into a variable
-        img_o3d = render.render_to_image()
-
-        # Display the image in a separate window
-        # (Note: OpenCV expects the color in BGR format, so swop red and blue.)
-        img_cv2 = cv2.cvtColor(np.array(img_o3d), cv2.COLOR_RGBA2BGRA)
-        cv2.imshow("Preview window", img_cv2)
-        cv2.waitKey()  # np.ndarray(np.float64([[1, 0, diameter]]).T, dtype=np.int)
-        # TODO End Remove
         partial_pcd = np.array(partial_pcd.points)
         # partial_pcd = self.pc_norm(partial_pcd)
         partial_pcd = torch.FloatTensor(partial_pcd)
@@ -111,25 +102,26 @@ if __name__ == "__main__":
     from configs.cfg1 import DataConfig
     iterator = ShapeNet(DataConfig)
     for elem in iterator:
-        lab, comp, part, x, y = elem
-        print(lab)
-        pc = PointCloud()
-        pc.points = Vector3dVector(part)
-        o3d.visualization.draw_geometries([pc])
-
-        pc = PointCloud()
-        pc.points = Vector3dVector(comp)
-        colors = []
-        t = 0
-        f = 0
-        for point in y:
-            if point == 1:
-                colors.append(np.array([0, 1, 0]))
-                t += 1
-            else:
-                colors.append(np.array([1, 0, 0]))
-                f += 1
-        # colors = np.stack(colors)
-        # colors = Vector3dVector(colors)
-        # pc.colors = colors
-        o3d.visualization.draw_geometries([pc], window_name="Green "+str(t) + ", red: " + str(f))
+        # lab, comp, part, x, y = elem
+        # print(lab)
+        # pc = PointCloud()
+        # pc.points = Vector3dVector(part)
+        # o3d.visualization.draw_geometries([pc])
+        #
+        # pc = PointCloud()
+        # pc.points = Vector3dVector(comp)
+        # colors = []
+        # t = 0
+        # f = 0
+        # for point in y:
+        #     if point == 1:
+        #         colors.append(np.array([0, 1, 0]))
+        #         t += 1
+        #     else:
+        #         colors.append(np.array([1, 0, 0]))
+        #         f += 1
+        # # colors = np.stack(colors)
+        # # colors = Vector3dVector(colors)
+        # # pc.colors = colors
+        # o3d.visualization.draw_geometries([pc], window_name="Green "+str(t) + ", red: " + str(f))
+        pass
