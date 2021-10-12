@@ -2,21 +2,24 @@ import os
 import random
 import numpy as np
 from torch import nn
-from torch.nn import BCELoss, Sigmoid
 from torch.nn.utils import clip_grad_value_
+import open3d as o3d
 from torch.utils.data import DataLoader
-from datasets.ShapeNetMesh import ShapeNet
+from datasets.ShapeNetPOV import ShapeNet
 from models.HyperNetwork import HyperNetwork
 import torch
-from utils import misc
 from configs.cfg1 import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
 from utils.logger import Logger
 from utils.misc import create_3d_grid, check_mesh_contains
 
-if __name__ == '__main__':
+
+def main(test=False):
+    print("Batch size: ", TrainConfig.mb_size)
+    print("BackBone input dimension: ", DataConfig.partial_points)
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
+
     # Reproducibility
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
     seed = TrainConfig.seed
@@ -25,15 +28,9 @@ if __name__ == '__main__':
     random.seed(seed)
     g = torch.Generator()
     g.manual_seed(0)
-
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-
     # torch.use_deterministic_algorithms(True)
-
-    # Load Dataset
-    train_dataset = ShapeNet(DataConfig(), mode="train")
-    valid_dataset = ShapeNet(DataConfig(), mode="valid")
 
     # Model
     model = HyperNetwork(ModelConfig())
@@ -43,111 +40,136 @@ if __name__ == '__main__':
         if len(parameter.size()) > 2:
             torch.nn.init.uniform_(parameter)
 
-    model.to(TrainConfig().device)
+    model.to(TrainConfig.device)
     model.train()
 
     # Loss
-    loss = BCELoss(reduction='none')
-    activation = Sigmoid()
+    loss_function = TrainConfig.loss(reduction="none")
 
     # Optimizer
-    # TODO add class to config (e.g. TrainConfig.oprimizer(params=model.parameters()))
-    optimizer = torch.optim.Adam(params=model.parameters())
+    optimizer = TrainConfig.optimizer(model.parameters())
 
     # WANDB
-    logger = Logger(model, active=False)
+    logger = Logger(model, active=True)
 
     # Dataset
-    # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
-    train_loader = DataLoader(train_dataset, batch_size=TrainConfig.mb_size,
-                              shuffle=True, drop_last=True,
-                              num_workers=TrainConfig.num_workers, pin_memory=True, generator=g)
-    valid_loader = DataLoader(valid_dataset, batch_size=TrainConfig.mb_size,
-                              drop_last=True, num_workers=TrainConfig.num_workers, pin_memory=True)
+    train_loader = DataLoader(ShapeNet(DataConfig, mode="train"),
+                              batch_size=TrainConfig.mb_size,
+                              shuffle=True,
+                              drop_last=True,
+                              num_workers=TrainConfig.num_workers,
+                              pin_memory=True,
+                              generator=g)
+    print("Loaded ", len(train_loader), " train instances")
+
+    valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid"),
+                              batch_size=TrainConfig.mb_size,
+                              drop_last=True,
+                              num_workers=TrainConfig.num_workers,
+                              pin_memory=True)
+    print("Loaded ", len(train_loader), " validation instances")
 
     losses = []
-    accuracy = []
+    accuracies = []
 
     for e in range(TrainConfig().n_epoch):
         #########
         # TRAIN #
         #########
         model.train()
-        for idx, (taxonomy_ids, model_ids, partial, data, imp_x, imp_y) in enumerate(
+        for idx, (label, partial, data, imp_x, imp_y) in enumerate(
                 tqdm(train_loader, position=0, leave=True, desc="Epoch " + str(e))):
-            gt = data.to(TrainConfig().device)
+
+            complete = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
 
-            logits = model(partial, x)
+            out = model(partial, x)
+            out = out.squeeze()
 
-            prob = activation(logits).squeeze(-1)
-            loss_value = loss(prob, y).sum(dim=1).mean()
+            loss_value = loss_function(out, y).sum(dim=1).mean()
 
             optimizer.zero_grad()
             loss_value.backward()
-
             if TrainConfig.clip_value is not None:
                 clip_grad_value_(model.parameters(), TrainConfig.clip_value)
 
             optimizer.step()
 
             # Logs
-            with torch.no_grad():
+            x = x.detach().cpu().numpy()
+            y = y.detach().cpu().numpy()[..., None]
+            out = out.detach().cpu().numpy()[..., None]
+            loss_value = loss_value.item()
 
-                x = x.detach()
-                y = y.detach()
-                prob = prob.detach()
+            losses.append(loss_value)
+            pred = copy.deepcopy(out) > 0.5
+            accuracy = (pred == y).sum() / pred.size
+            accuracies.append(accuracy)
 
-                losses.append(loss_value.item())
-                pred = copy.deepcopy(prob) > 0.5
-                accuracy.append((torch.sum((pred == y)) / torch.numel(pred)).item())
+            if idx % TrainConfig.log_metrics_every == 0:  # Log numerical stuff
+                logger.log_metrics({"train/loss": sum(losses) / len(losses),
+                                    "train/accuracy": sum(accuracies) / len(accuracies),
+                                    "train/out": out,
+                                    "train/step": idx})
+                losses = []
+                accuracies = []
 
-                if idx % TrainConfig().log_metrics_every == 0:  # Log numerical stuff
-                    logger.log_metrics(losses, accuracy, pred, prob, y, idx)
-                    losses = []
-                    accuracy = []
+            if idx % TrainConfig.log_pcs_every == 0:  # Log point clouds
 
-                if idx % TrainConfig().log_pcs_every == 0:  # Log point clouds
-                    true_points = torch.cat((x[0], y[0].unsqueeze(-1)), dim=1)
+                complete = complete.detach().cpu().numpy()[0]
+                partial = partial.detach().cpu().numpy()[0]
+                pred = pred[0]
+                x = x[0]
+                y = y[0]
 
-                    true = []
+                implicit_function_input = np.concatenate((x, y), axis=1)
+                implicit_function_output = np.concatenate((x, pred), axis=1)
 
-                    for point, value in zip(x[0], pred[0]):
-                        if value.item() == 1.:
-                            true.append(point)
-                    if len(true) > 0:
-                        true = torch.stack(true)
-                    else:
-                        true = torch.zeros(1, 3)
+                logger.log_point_clouds({"complete": complete,
+                                         "partial": partial,
+                                         "implicit_function_input": implicit_function_input,
+                                         "implicit_function_output": implicit_function_output})
 
-                    logger.log_pcs(gt[0], partial[0], true_points, true)
-
-        # TODO VALIDATION
-        # TODO SHAPENET VALID SHOULD RETURN THE FOLLOWING
+            if test:
+                break
         ########
         # EVAL #
         ########
-        x = create_3d_grid(bs=TrainConfig().mb_size)
-        x = x.to(TrainConfig().device)
-        val_loss = []
-        val_acc = []
+        x = create_3d_grid(bs=TrainConfig().mb_size).to(TrainConfig().device)
+        pred = None
+        val_losses = []
+        val_accuracies = []
         model.eval()
         with torch.no_grad():
-            for idx, (taxonomy_ids, model_ids, partial, mesh) in enumerate(
+            for idx, (label, mesh, partial) in enumerate(
                     tqdm(valid_loader, position=0, leave=True, desc="Validation " + str(e))):
-                partial = partial.to(TrainConfig().device)
+                partial = partial.to(TrainConfig.device)
 
-                logits = model(partial, x)
+                out = model(partial, x)
 
-                prob = activation(logits).squeeze(-1)
-                loss_value = loss(prob, y).sum(dim=1).mean()
-                val_loss.append(loss_value.item())
+                y = check_mesh_contains(mesh, x)  # TODO PARALLELIZE IT
+                y = torch.FloatTensor(y).to(out.device)
+                loss = loss_function(out, y).sum(dim=1).mean()
+                val_losses.append(loss.item())
 
-                pred = copy.deepcopy(prob) > 0.5
-                true = check_mesh_contains(mesh, x)
-                acc = (torch.sum((pred == y)) / torch.numel(pred))
-                val_acc.append(acc)
+                pred = copy.deepcopy(out) > 0.5
+                accuracy = (pred == y).sum().item() / torch.numel(pred)  # TODO numpy
+                val_accuracies.append(accuracy)
 
-        logger.log_metrics(val_loss, val_acc)
-        logger.log_recon(pred[0])
+                if test:
+                    break
+
+        logger.log_metrics({"validation/loss": sum(val_losses) / len(val_losses),
+                            "validation/accuracy": sum(val_accuracies) / len(val_accuracies)})
+        reconstruction = torch.cat((x[0], pred[0]), dim=-1).detach().cpu().numpy()
+        original = torch.cat((x[0], y[0]), dim=-1).detach().cpu().numpy()
+        logger.log_point_clouds({"reconstruction": reconstruction,
+                                 "original": original})
+
+        if test:
+            break
+
+
+if __name__ == "__main__":
+    main()

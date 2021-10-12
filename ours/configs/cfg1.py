@@ -2,6 +2,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
+import torch
 
 
 # PARAMETERS ###########################################################################################################
@@ -11,22 +12,15 @@ device = "cuda"
 
 @dataclass
 class DataConfig:
-    DATA_PATH = Path("data") / "ShapeNet55-34" / "ShapeNet-55"
-    NAME = "ShapeNet"
-    N_POINTS = 8192
-    subset = "train"
-    PC_PATH = Path("data") / "ShapeNet55-34" / "shapenet_pc"
-    voxel_size = 0.1
+    dataset_path = "../data/ShapeNetCore.v2"
+    partial_points = 2048
+    multiplier_complete_sampling = 3
     noise_rate = 0.02
     percentage_sampled = 0.1
-    # OurShapeNet
-    dataset_path = "../data/ShapeNetCore.v2"
-    mode = 'train' # train, valid, test
 
 
 @dataclass
 class ModelConfig:
-    NAME = "PoinTr"
     PC_SIZE = 2048
     knn_layer = 1
     num_pred = 6144
@@ -49,12 +43,13 @@ class ModelConfig:
 def git_hash() -> str:
     return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
 
+
 @dataclass
 class TrainConfig:
     difficulty = "easy"
     device = device
     visible_dev = '0'
-    mb_size = 8
+    mb_size = 2
     n_epoch = 20
     clip_value = 5
     log_metrics_every = 100
@@ -62,4 +57,5 @@ class TrainConfig:
     seed = int(datetime.now().timestamp())   # 1234 5678 does not converge
     num_workers = 4
     git = git_hash()
-
+    optimizer = torch.optim.Adam
+    loss = torch.nn.BCEWithLogitsLoss

@@ -8,6 +8,9 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
+from open3d.cpu.pybind.geometry import PointCloud
+from open3d.cpu.pybind.utility import Vector3dVector
+
 from utils.fps import fp_sampling
 from math import ceil
 import open3d as o3d
@@ -366,22 +369,35 @@ def random_dropping(pc, e):
 #     return partial * scale
 
 
-def create_3d_grid(min_value=-1, max_value=1, step=0.01, bs=1):
+def create_3d_grid(min_value=-1, max_value=1, step=0.05, bs=1):
     x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     y_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     z_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     grid_2d = torch.cartesian_prod(x_range, y_range)
-    z_repeated = z_range.repeat(z_range.shape[0]).unsqueeze(-1)
+    grid_2d = grid_2d.repeat(x_range.shape[0], 1)
+    z_repeated = z_range.unsqueeze(1).T.repeat(x_range.shape[0]**2, 1).T.reshape(-1)[..., None]
     grid_3d = torch.cat((grid_2d, z_repeated), dim=-1)
-    grid_3d = grid_3d.unsqueeze(0).repeat(bs, 1, 1, 1)
+    grid_3d = grid_3d.unsqueeze(0).repeat(bs, 1, 1)
     return grid_3d
 
 
-def check_mesh_contains(mesh, query, max_dist=0.01):
-    scene = o3d.t.geometry.RaycastingScene()
-    mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
-    _ = scene.add_triangles(mesh)
-    query_points = o3d.core.Tensor(query, dtype=o3d.core.Dtype.Float32)
-    signed_distance = scene.compute_signed_distance(query_points)
-    occupancies = signed_distance < max_dist  # TODO remove this to deal with distances
-    return occupancies
+def check_mesh_contains(meshes, queries, max_dist=0.01):
+    occupancies = []
+    queries = queries.detach().cpu().numpy()
+    for mesh, query in zip(meshes, queries):
+        scene = o3d.t.geometry.RaycastingScene()
+        mesh = o3d.io.read_triangle_mesh(mesh, True)
+        mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+        _ = scene.add_triangles(mesh)
+        query_points = o3d.core.Tensor(query, dtype=o3d.core.Dtype.Float32)
+        signed_distance = scene.compute_signed_distance(query_points)
+        occupancies.append((signed_distance < max_dist).numpy())
+    occupancies = np.stack(occupancies)[..., None]
+    return occupancies.astype(float)
+
+
+if __name__ == "__main__":
+    grid = create_3d_grid()
+    pc = PointCloud()
+    pc.points = Vector3dVector(grid.squeeze())
+    o3d.visualization.draw_geometries([pc], window_name=str(len(grid.squeeze())))
