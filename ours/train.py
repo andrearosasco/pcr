@@ -1,21 +1,19 @@
 import os
 import random
-
 import numpy as np
 from torch import nn
 from torch.nn import BCELoss, Sigmoid
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
-
-from datasets.ShapeNet55Dataset import ShapeNet
+from datasets.ShapeNetMesh import ShapeNet
 from models.HyperNetwork import HyperNetwork
 import torch
 from utils import misc
-import time
 from configs.cfg1 import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
 from utils.logger import Logger
+from utils.misc import create_3d_grid, check_mesh_contains
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
@@ -34,7 +32,8 @@ if __name__ == '__main__':
     # torch.use_deterministic_algorithms(True)
 
     # Load Dataset
-    dataset = ShapeNet(DataConfig())
+    train_dataset = ShapeNet(DataConfig(), mode="train")
+    valid_dataset = ShapeNet(DataConfig(), mode="valid")
 
     # Model
     model = HyperNetwork(ModelConfig())
@@ -60,16 +59,22 @@ if __name__ == '__main__':
 
     # Dataset
     # TODO: come aggiunge point cloud di dimensioni diverse nella stessa batch?
-    dataloader = DataLoader(dataset, batch_size=TrainConfig.mb_size,
-                            shuffle=True, drop_last=True,
-                            num_workers=TrainConfig.num_workers, pin_memory=True, generator=g)
+    train_loader = DataLoader(train_dataset, batch_size=TrainConfig.mb_size,
+                              shuffle=True, drop_last=True,
+                              num_workers=TrainConfig.num_workers, pin_memory=True, generator=g)
+    valid_loader = DataLoader(valid_dataset, batch_size=TrainConfig.mb_size,
+                              drop_last=True, num_workers=TrainConfig.num_workers, pin_memory=True)
 
     losses = []
     accuracy = []
 
     for e in range(TrainConfig().n_epoch):
+        #########
+        # TRAIN #
+        #########
+        model.train()
         for idx, (taxonomy_ids, model_ids, partial, data, imp_x, imp_y) in enumerate(
-                tqdm(dataloader, position=0, leave=True, desc="Epoch " + str(e))):
+                tqdm(train_loader, position=0, leave=True, desc="Epoch " + str(e))):
             gt = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
@@ -117,3 +122,32 @@ if __name__ == '__main__':
                         true = torch.zeros(1, 3)
 
                     logger.log_pcs(gt[0], partial[0], true_points, true)
+
+        # TODO VALIDATION
+        # TODO SHAPENET VALID SHOULD RETURN THE FOLLOWING
+        ########
+        # EVAL #
+        ########
+        x = create_3d_grid(bs=TrainConfig().mb_size)
+        x = x.to(TrainConfig().device)
+        val_loss = []
+        val_acc = []
+        model.eval()
+        with torch.no_grad():
+            for idx, (taxonomy_ids, model_ids, partial, mesh) in enumerate(
+                    tqdm(valid_loader, position=0, leave=True, desc="Validation " + str(e))):
+                partial = partial.to(TrainConfig().device)
+
+                logits = model(partial, x)
+
+                prob = activation(logits).squeeze(-1)
+                loss_value = loss(prob, y).sum(dim=1).mean()
+                val_loss.append(loss_value.item())
+
+                pred = copy.deepcopy(prob) > 0.5
+                true = check_mesh_contains(mesh, x)
+                acc = (torch.sum((pred == y)) / torch.numel(pred))
+                val_acc.append(acc)
+
+        logger.log_metrics(val_loss, val_acc)
+        logger.log_recon(pred[0])

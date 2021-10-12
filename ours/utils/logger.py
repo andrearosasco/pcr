@@ -19,43 +19,26 @@ class Logger:
                                     not k.startswith("__")}
             wandb.watch(model, log="all", log_freq=1, log_graph=True)
 
-    def log_metrics(self, losses, accuracies, out, out_sig, target, step):
+    def log_metrics(self, losses, accuracies, out_sig=None, step=None, mode="train"):
         """
+        :param mode: one in "train" and "valid"
+        :param step: step inside the batch
         :param losses: list ( float )
         :param accuracies: list ( float )
-        :param out: FloatTensor on CUDA
         :param out_sig: FloatTensor on CUDA
-        :param target: FloatTensor on CUDA
-        :param z: FloatTensor on CUDA
-        :param impl_params: list ( list ( FloatTensor on CUDA ) )
         """
         if self.active:
             loss = sum(losses) / len(losses)
             acc = sum(accuracies) / len(accuracies)
-            out = out.detach().cpu()
-            out_sig = out_sig.detach().cpu()
-            pred = copy.deepcopy(out_sig).apply_(lambda v: 1 if v > 0.5 else 0)
-            target = target.detach().cpu()
-            # z = z.detach().cpu()
+            if out_sig is not None:
+                out_sig = out_sig.detach().cpu()
 
-            wandb.log({"accuracy": acc, 'step': step})
-            wandb.log({"loss": loss, 'step': step})
-            wandb.log({"out": out, 'step': step})
-            wandb.log({"out_sig": out_sig, 'step': step})
-            wandb.log({"pred": pred, 'step': step})
-            wandb.log({"target": target, 'step': step})
-            # wandb.log({"z": z})
-
-            weights = []
-            scales = []
-            biases = []
-            # for param in impl_params:
-            #     weights.append(param[0].view(-1))
-            #     scales.append(param[1].view(-1))
-            #     biases.append(param[2].view(-1))
-            # wandb.log({"w of implicit function": torch.cat(weights)})
-            # wandb.log({"scales of implicit function": torch.cat(scales)})
-            # wandb.log({"b of implicit function": torch.cat(biases)})
+            wandb.log({mode + "/accuracy": acc})
+            wandb.log({mode + "/loss": loss})
+            if step is not None:
+                wandb.log({mode + "/step": step})
+            if out_sig is not None:
+                wandb.log({mode + "/out_sig": out_sig, 'step': step})
 
     def log_pcs(self, complete, partial, impl_input, impl_pred):
         """
@@ -75,3 +58,9 @@ class Logger:
                                 ["original", "partial", "impl_input", "impl_pred"]):
                 pcs[name] = wandb.Object3D({"type": "lidar/beta", "points": pc})
             wandb.log(pcs)
+
+    def log_recon(self, recon):
+        if self.active:
+            recon = recon.detach().cpu().numpy()
+            recon = wandb.Object3D({"type": "lidar/beta", "points": recon})
+            wandb.log({"reconstruction": recon})
