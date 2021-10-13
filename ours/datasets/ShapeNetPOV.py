@@ -15,8 +15,6 @@ from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
 from utils.misc import sample_point_cloud
 
 
-
-
 class ShapeNet(data.Dataset):
     def __init__(self, config):
         #  Backbone Input
@@ -55,28 +53,40 @@ class ShapeNet(data.Dataset):
 
         # Extract point cloud from mesh
         tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
+        tm.compute_vertex_normals()
+        draw_geometries([tm])
 
-        complete_pcd = tm.sample_points_uniformly(self.n_points*10)
+        complete_pcd = tm.sample_points_uniformly(self.n_points * 10)
 
         diameter = np.linalg.norm(
             np.asarray(complete_pcd.get_max_bound()) - np.asarray(complete_pcd.get_min_bound()))
 
-        z = random.uniform(-diameter, diameter)
-        theta = random.uniform(0, 2*np.pi)
-        x = ((diameter)**2 - z**2) * cos(theta)
-        y = ((diameter)**2 - z**2) * sin(theta)
+        sph_radius = 1
+        y = random.uniform(-sph_radius, sph_radius)
+        theta = random.uniform(0, 2 * np.pi)
+
+        x = np.sqrt(sph_radius ** 2 - y ** 2) * cos(theta)
+        z = np.sqrt(sph_radius ** 2 - y ** 2) * sin(theta)
 
         camera = [x, y, z]
-        f = TriangleMesh.create_coordinate_frame(size=1, origin=camera)
-
-        radius = np.sqrt(diameter**2 - z**2) * 100
-
-        _, pt_map = complete_pcd.hidden_point_removal(camera, radius*4)
+        # radius = np.sqrt(diameter ** 2 - z ** 2) * 100
+        _, pt_map = complete_pcd.hidden_point_removal(camera, 500)  # radius * 4
         partial_pcd = complete_pcd.select_by_index(pt_map)
 
-        # tm.compute_vertex_normals()
-        # draw_geometries([tm])
-        draw_geometries([partial_pcd], lookat=[0, 0, 0], up=[0, 1, 0], front=camera, zoom=1)
+        # Visualizer
+        # vis = o3d.visualization.Visualizer()
+        # vis.create_window()
+        #
+        # vis.add_geometry(partial_pcd)
+        #
+        # ctr = vis.get_view_control()
+        # ctr.set_front([x, y, z])
+        # ctr.set_lookat([0, 0, 0])
+        # ctr.set_up([0, 1, 0])
+        # ctr.set_zoom(1)
+        #
+        # vis.run()
+        # vis.capture_screen_image('test.png', True)
 
         partial_pcd = np.array(partial_pcd.points)
         # partial_pcd = self.pc_norm(partial_pcd)
@@ -97,11 +107,12 @@ class ShapeNet(data.Dataset):
         return self.n_samples
 
 
-
 if __name__ == "__main__":
     from configs.cfg1 import DataConfig
+
     iterator = ShapeNet(DataConfig)
     for elem in iterator:
+
         # lab, comp, part, x, y = elem
         # print(lab)
         # pc = PointCloud()
