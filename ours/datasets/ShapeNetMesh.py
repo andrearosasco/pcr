@@ -51,7 +51,6 @@ class ShapeNet(data.Dataset):
 
         # Extract point cloud from mesh
         tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
-
         complete_pcd = tm.sample_points_uniformly(self.n_points)
 
         diameter = np.linalg.norm(

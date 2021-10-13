@@ -1,26 +1,21 @@
-import os
 import random
 from pathlib import Path
-
+from utils.misc import fps
 import numpy as np
-import cv2
 import torch
 import torch.utils.data as data
 import open3d as o3d
 from numpy import cos, sin
-from open3d.cpu.pybind.geometry import PointCloud, TriangleMesh
-from open3d.cpu.pybind.utility import Vector3dVector
-from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
-
 from utils.misc import sample_point_cloud
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config):
+    def __init__(self, config, mode="train"):
+        self.mode = mode
         #  Backbone Input
         self.data_root = Path(config.dataset_path)
-        self.mode = config.mode
-        self.n_points = config.N_POINTS
+        self.partial_points = config.partial_points
+        self.multiplier_complete_sampling = config.multiplier_complete_sampling
 
         # Implicit function input
         self.noise_rate = config.noise_rate
@@ -34,8 +29,6 @@ class ShapeNet(data.Dataset):
 
         with (self.data_root / 'classes.txt').open('r') as file:
             self.labels_map = {l.split()[1]: l.split()[0] for l in file.readlines()}
-
-        print("Found ", self.n_samples, " instances")
 
     @staticmethod
     def pc_norm(pcs):
@@ -53,25 +46,20 @@ class ShapeNet(data.Dataset):
 
         # Extract point cloud from mesh
         tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
-        tm.compute_vertex_normals()
-        draw_geometries([tm])
+        complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
-        complete_pcd = tm.sample_points_uniformly(self.n_points * 10)
-
-        diameter = np.linalg.norm(
-            np.asarray(complete_pcd.get_max_bound()) - np.asarray(complete_pcd.get_min_bound()))
-
+        # Get random position of camera
         sph_radius = 1
         y = random.uniform(-sph_radius, sph_radius)
         theta = random.uniform(0, 2 * np.pi)
-
         x = np.sqrt(sph_radius ** 2 - y ** 2) * cos(theta)
         z = np.sqrt(sph_radius ** 2 - y ** 2) * sin(theta)
-
         camera = [x, y, z]
-        # radius = np.sqrt(diameter ** 2 - z ** 2) * 100
+
+        # Remove hidden points
         _, pt_map = complete_pcd.hidden_point_removal(camera, 500)  # radius * 4
         partial_pcd = complete_pcd.select_by_index(pt_map)
+        partial_pcd = torch.FloatTensor(np.array(partial_pcd.points))
 
         # Visualizer
         # vis = o3d.visualization.Visualizer()
@@ -88,11 +76,19 @@ class ShapeNet(data.Dataset):
         # vis.run()
         # vis.capture_screen_image('test.png', True)
 
-        partial_pcd = np.array(partial_pcd.points)
-        # partial_pcd = self.pc_norm(partial_pcd)
-        partial_pcd = torch.FloatTensor(partial_pcd)
+        # Set partial_pcd such that it has the same size of the others
+        if partial_pcd.shape[0] < self.partial_points:
+            diff = self.partial_points - partial_pcd.shape[0]
+            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
+            print("[ShapeNetPOV] WARNING: padding incomplete point cloud")
+        else:
+            partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
+
+        if self.mode == "valid":
+            mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
+            return label, mesh_path, partial_pcd
+
         complete_pcd = np.array(complete_pcd.points)
-        # complete_pcd = self.pc_norm(complete_pcd)
         complete_pcd = torch.FloatTensor(complete_pcd)
 
         imp_x, imp_y = sample_point_cloud(tm,
@@ -100,7 +96,6 @@ class ShapeNet(data.Dataset):
                                           self.percentage_sampled)
         imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).bool().float().bool().float()  # TODO oh god..
 
-        # return label, (complete_xyz, complete_colors), imp_x, imp_y
         return label, complete_pcd, partial_pcd, imp_x, imp_y
 
     def __len__(self):
@@ -112,7 +107,6 @@ if __name__ == "__main__":
 
     iterator = ShapeNet(DataConfig)
     for elem in iterator:
-
         # lab, comp, part, x, y = elem
         # print(lab)
         # pc = PointCloud()
