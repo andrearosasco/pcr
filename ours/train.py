@@ -164,8 +164,14 @@ def main(test=False):
                             "validation/accuracy": sum(val_accuracies) / len(val_accuracies)})
         reconstruction = torch.cat((x[0], pred[0]), dim=-1).detach().cpu().numpy()
         original = torch.cat((x[0], y[0]), dim=-1).detach().cpu().numpy()
+
+        reconstruction_kept = reconstruction[reconstruction[..., -1] == 1.]
+        original_kept = original[original[..., -1] == 1.]
+
         logger.log_point_clouds({"reconstruction": reconstruction,
-                                 "original": original})
+                                 "original": original,
+                                 "reconstruction_kept": reconstruction_kept,
+                                 "original_kept": original_kept})
 
         if test:
             break
