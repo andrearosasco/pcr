@@ -40,46 +40,56 @@ class ShapeNet(data.Dataset):
         return pcs
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
-        # Get label
-        dir_path = self.data_root / self.samples[idx].strip()
-        label = self.labels_map[dir_path.parent.name]
+        if self.samples[idx].strip() != "04401088/a4910da0271b6f213a7e932df8806f9e":
 
-        # Extract point cloud from mesh
-        tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
-        complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
+            print(self.data_root / self.samples[idx].strip())
+            # Get label
+            dir_path = self.data_root / self.samples[idx].strip()
+            label = self.labels_map[dir_path.parent.name]
 
-        # Get random position of camera
-        sph_radius = 1
-        y = random.uniform(-sph_radius, sph_radius)
-        theta = random.uniform(0, 2 * np.pi)
-        x = np.sqrt(sph_radius ** 2 - y ** 2) * cos(theta)
-        z = np.sqrt(sph_radius ** 2 - y ** 2) * sin(theta)
-        camera = [x, y, z]
+            # Extract point cloud from mesh
+            tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)  # ERRORE QUA!!!
+            complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
-        # Remove hidden points
-        _, pt_map = complete_pcd.hidden_point_removal(camera, 500)  # radius * 4
-        partial_pcd = complete_pcd.select_by_index(pt_map)
-        partial_pcd = torch.FloatTensor(np.array(partial_pcd.points))
+            # Get random position of camera
+            sph_radius = 1
+            y = random.uniform(-sph_radius, sph_radius)
+            theta = random.uniform(0, 2 * np.pi)
+            x = np.sqrt(sph_radius ** 2 - y ** 2) * cos(theta)
+            z = np.sqrt(sph_radius ** 2 - y ** 2) * sin(theta)
+            camera = [x, y, z]
 
-        # Set partial_pcd such that it has the same size of the others
-        if partial_pcd.shape[0] < self.partial_points:
-            diff = self.partial_points - partial_pcd.shape[0]
-            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
-            print("[ShapeNetPOV] WARNING: padding incomplete point cloud")
+            # Remove hidden points
+            _, pt_map = complete_pcd.hidden_point_removal(camera, 500)  # radius * 4
+            partial_pcd = complete_pcd.select_by_index(pt_map)
+            partial_pcd = torch.FloatTensor(np.array(partial_pcd.points))
+
+            # Set partial_pcd such that it has the same size of the others
+            if partial_pcd.shape[0] < self.partial_points:
+                diff = self.partial_points - partial_pcd.shape[0]
+                partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
+                print("[ShapeNetPOV] WARNING: padding incomplete point cloud")
+            else:
+                partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
+
+            if self.mode == "valid":
+                mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
+                return label, mesh_path, partial_pcd
+
+            complete_pcd = np.array(complete_pcd.points)
+            complete_pcd = torch.FloatTensor(complete_pcd)
+
+            imp_x, imp_y = sample_point_cloud(tm,
+                                              self.noise_rate,
+                                              self.percentage_sampled)
+            imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).bool().float().bool().float()  # TODO oh god..
+
         else:
-            partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
-
-        if self.mode == "valid":
-            mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
-            return label, mesh_path, partial_pcd
-
-        complete_pcd = np.array(complete_pcd.points)
-        complete_pcd = torch.FloatTensor(complete_pcd)
-
-        imp_x, imp_y = sample_point_cloud(tm,
-                                          self.noise_rate,
-                                          self.percentage_sampled)
-        imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).bool().float().bool().float()  # TODO oh god..
+            label = 0
+            complete_pcd = torch.zeros((6144, 3))
+            partial_pcd = torch.zeros((2048, 3))
+            imp_x = torch.zeros((8192, 3))
+            imp_y = torch.zeros((8192))
 
         return label, complete_pcd, partial_pcd, imp_x, imp_y
 

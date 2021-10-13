@@ -34,7 +34,8 @@ def main(test=False):
 
     # Model
     model = HyperNetwork(ModelConfig())
-    model = nn.DataParallel(model)
+    if "cuda" in TrainConfig.device:
+        model = nn.DataParallel(model)
 
     for parameter in model.parameters():
         if len(parameter.size()) > 2:
@@ -67,7 +68,7 @@ def main(test=False):
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
                               pin_memory=True)
-    print("Loaded ", len(train_loader), " validation instances")
+    print("Loaded ", len(valid_loader), " validation instances")
 
     losses = []
     accuracies = []
