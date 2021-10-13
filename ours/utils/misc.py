@@ -8,8 +8,8 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
-from open3d.cpu.pybind.geometry import PointCloud
-from open3d.cpu.pybind.utility import Vector3dVector
+# from open3d.cpu.pybind.geometry import PointCloud
+# from open3d.cpu.pybind.utility import Vector3dVector
 
 from utils.fps import fp_sampling
 from math import ceil
@@ -396,8 +396,8 @@ def check_mesh_contains(meshes, queries, max_dist=0.01):
     return occupancies.astype(float)
 
 
-if __name__ == "__main__":
-    grid = create_3d_grid()
-    pc = PointCloud()
-    pc.points = Vector3dVector(grid.squeeze())
-    o3d.visualization.draw_geometries([pc], window_name=str(len(grid.squeeze())))
+# if __name__ == "__main__":
+#     grid = create_3d_grid()
+#     pc = PointCloud()
+#     pc.points = Vector3dVector(grid.squeeze())
+#     o3d.visualization.draw_geometries([pc], window_name=str(len(grid.squeeze())))

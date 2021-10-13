@@ -47,7 +47,7 @@ def main(test=False):
     loss_function = TrainConfig.loss(reduction="none")
 
     # Optimizer
-    optimizer = TrainConfig.optimizer(model.parameters())
+    optimizer = TrainConfig.optimizer(model.parameters(), lr=1e-4)
 
     # WANDB
     logger = Logger(model, active=True)
