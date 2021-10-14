@@ -10,7 +10,8 @@ from collections import abc
 import tqdm
 from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
-
+# from open3d.open3d_pybind.geometry import PointCloud
+# from open3d.open3d_pybind.utility import Vector3dVector
 from utils.fps import fp_sampling
 from math import ceil
 import open3d as o3d

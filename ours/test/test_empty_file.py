@@ -14,6 +14,10 @@ import numpy as np
 import random
 from configs.cfg1 import DataConfig, TrainConfig
 
+tm = o3d.io.read_triangle_mesh('C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/04401088/a4910da0271b6f213a7e932df8806f9e/models/model_normalized.obj')
+o3d.visualization.draw_geometries([tm])
+
+
 os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
 seed = TrainConfig.seed
 torch.manual_seed(seed)
@@ -36,6 +40,4 @@ train_loader = DataLoader(ShapeNet(DataConfig, mode="train"),
 for elem in tqdm.tqdm(train_loader):
     pass
 
-tm = o3d.io.read_triangle_mesh('C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/04401088/a4910da0271b6f213a7e932df8806f9e/models/model_normalized.obj')
-# ..\..\data\ShapeNetCore.v2\03691459\1f2a8562a2de13a2c29fde65e51f52cb
-o3d.visualization.draw_geometries([tm])
+
