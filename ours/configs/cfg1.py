@@ -17,6 +17,7 @@ class DataConfig:
     multiplier_complete_sampling = 3
     noise_rate = 0.02
     percentage_sampled = 0.1
+    mode = 'train' # train, valid, test
 
 
 @dataclass
