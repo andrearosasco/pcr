@@ -50,7 +50,7 @@ class ShapeNet(data.Dataset):
                 import os
                 if os.path.exists(self.data_root / self.samples[idx].strip() / "images"):
                     os.rename(self.data_root / self.samples[idx].strip() / "images",
-                              self.data_root / self.samples[idx].strip() / "imgs")
+                              self.data_root / self.samples[idx].strip() / "imgs", )
                 label = int(self.labels_map[dir_path.parent.name])
                 tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
                 complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
