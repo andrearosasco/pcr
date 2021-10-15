@@ -5,14 +5,25 @@ from torch.nn.init import trunc_normal_
 from .Transformer import PCTransformer
 
 
+def deep_hn(input_size, output_size, hidden_size=None):
+    if hidden_size is None:
+        hidden_size = input_size + output_size
+    return nn.Sequential(
+        nn.Linear(input_size, hidden_size),
+        torch.nn.GELU(),
+        torch.nn.LayerNorm(hidden_size),
+        nn.Linear(hidden_size, output_size)
+    )
+
+
 class HyperNetwork(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.backbone = BackBone(config)
         self.sdf = ImplicitFunction(config)
 
-    def forward(self, main_in, sec_in):
-        fast_weights, _ = self.backbone(main_in)
+    def forward(self, main_in, sec_in, object_id=None):
+        fast_weights, _ = self.backbone(main_in, object_id=object_id)
         return self.sdf(sec_in, fast_weights)
 
 
@@ -35,22 +46,36 @@ class BackBone(nn.Module):
                                          qk_scale=config.qk_scale,
                                          out_size=config.out_size)
 
-        self.output = nn.ModuleList([nn.ModuleList([
-                nn.Linear(config.out_size, config.hidden_dim * 3, bias=True),
-                nn.Linear(config.out_size, config.hidden_dim, bias=True),
-                nn.Linear(config.out_size, config.hidden_dim, bias=True)])])
+        # Select between deep feature extractor and not
+        if config.use_deep_weights_generator:
+            generator = deep_hn
+        else:
+            generator = nn.Linear
 
+        # Select the right dimension for linear layers
+        if config.use_object_id:
+            global_size = config.out_size + config.n_classes
+        else:
+            global_size = config.out_size
+
+        # Generate first weight, bias and scale of the input layer of the implicit function
+        self.output = nn.ModuleList([nn.ModuleList([
+                generator(global_size, config.hidden_dim * 3),
+                generator(global_size, config.hidden_dim),
+                generator(global_size, config.hidden_dim)])])
+
+        # Generate weights, biases and scales of the hidden layers of the implicit function
         for _ in range(2):
             self.output.append(nn.ModuleList([
-                    nn.Linear(config.out_size, config.hidden_dim * config.hidden_dim, bias=True),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=True),
-                    nn.Linear(config.out_size, config.hidden_dim, bias=True)
+                    generator(global_size, config.hidden_dim * config.hidden_dim),
+                    generator(global_size, config.hidden_dime),
+                    generator(global_size, config.hidden_dim)
                 ]))
-
+        # Generate weights, biases and scales of the output layer of the implicit function
         self.output.append(nn.ModuleList([
-            nn.Linear(config.out_size, config.hidden_dim, bias=True),
-            nn.Linear(config.out_size, 1, bias=True),
-            nn.Linear(config.out_size, 1, bias=True),
+            generator(global_size, config.hidden_dim),
+            generator(global_size, 1),
+            generator(global_size, 1),
         ]))
 
         # self.transformer.apply(self._init_weights)
@@ -68,11 +93,15 @@ class BackBone(nn.Module):
     #         if isinstance(m, nn.Linear) and m.bias is not None:
     #             nn.init.constant_(m.bias, 0)
 
-    def forward(self, xyz):
+    def forward(self, xyz, object_id=None):
         # xyz = torch.reshape(xyz, (xyz.shape[0], -1))
         # global_feature = self.test(xyz)
 
         global_feature = self.transformer(xyz)  # B M C and B M 3
+
+        if object_id is not None:
+            global_feature = torch.cat((global_feature, object_id), dim=-1)
+
         fast_weights = []
         for layer in self.output:
             fast_weights.append([ly(global_feature) for ly in layer])

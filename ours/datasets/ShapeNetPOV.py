@@ -103,7 +103,7 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from configs.cfg1 import DataConfig
+    from  ours.configs import DataConfig
 
     iterator = ShapeNet(DataConfig)
     for elem in iterator:
