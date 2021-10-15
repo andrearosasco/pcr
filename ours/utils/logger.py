@@ -1,5 +1,5 @@
 import wandb
-from configs.cfg1 import TrainConfig, ModelConfig, DataConfig
+from configs.local_config import TrainConfig, ModelConfig, DataConfig
 import copy
 import torch
 

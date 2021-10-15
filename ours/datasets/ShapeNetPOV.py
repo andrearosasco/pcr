@@ -1,5 +1,8 @@
 import random
 from pathlib import Path
+
+from open3d.cpu.pybind.geometry import PointCloud
+
 from utils.misc import fps
 import numpy as np
 import torch
@@ -41,13 +44,22 @@ class ShapeNet(data.Dataset):
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
         print(self.data_root / self.samples[idx].strip())
+        padding_length = 0
         # Get label
-        dir_path = self.data_root / self.samples[idx].strip()
-        label = int(self.labels_map[dir_path.parent.name])
+
 
         # Extract point cloud from mesh
-        tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)  # ERRORE QUA!!!
-        complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
+        while True:
+            try:
+                dir_path = self.data_root / self.samples[idx].strip()
+                label = int(self.labels_map[dir_path.parent.name])
+                tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
+                complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
+                break
+            except Exception as e:
+                with open("bad_files.txt", "a") as f:
+                    print(self.data_root / self.samples[idx].strip(), file=f)
+                idx = random.randint(0, len(self))
 
         # Get random position of camera
         sph_radius = 1
@@ -56,6 +68,7 @@ class ShapeNet(data.Dataset):
         x = np.sqrt(sph_radius ** 2 - y ** 2) * cos(theta)
         z = np.sqrt(sph_radius ** 2 - y ** 2) * sin(theta)
         camera = [x, y, z]
+        # TODO normalize
 
         # Remove hidden points
         _, pt_map = complete_pcd.hidden_point_removal(camera, 500)  # radius * 4
@@ -66,7 +79,8 @@ class ShapeNet(data.Dataset):
         if partial_pcd.shape[0] < self.partial_points:
             diff = self.partial_points - partial_pcd.shape[0]
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
-            print("[ShapeNetPOV] WARNING: padding incomplete point cloud")
+            print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
+            padding_length = diff
         else:
             partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
 
@@ -94,7 +108,7 @@ class ShapeNet(data.Dataset):
             mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
             return label, mesh_path, partial_pcd
 
-        return label, partial_pcd, complete_pcd, imp_x, imp_y
+        return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
 
     def __len__(self):
         return self.n_samples

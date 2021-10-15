@@ -37,7 +37,6 @@ class BackBone(nn.Module):
         super().__init__()
         self.embed_dim = config.embed_dim
         self.knn_layer = config.knn_layer
-        self.num_pred = config.num_pred
 
         self.transformer = PCTransformer(in_chans=config.n_channels,
                                          embed_dim=config.embed_dim,

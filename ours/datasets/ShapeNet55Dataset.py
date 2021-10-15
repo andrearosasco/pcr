@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.utils.data as data
 
-from configs.cfg1 import DataConfig
+from configs.local_config import DataConfig
 from utils import misc
 from utils.misc import sample_point_cloud
 

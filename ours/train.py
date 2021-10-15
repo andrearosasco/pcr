@@ -1,15 +1,17 @@
 import os
 import random
+import time
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 from torch import nn
-from torch.nn.functional import one_hot
 from torch.nn.utils import clip_grad_value_
-import open3d as o3d
 from torch.utils.data import DataLoader
 from datasets.ShapeNetPOV import ShapeNet
 from models.HyperNetwork import HyperNetwork
 import torch
-from configs.cfg1 import DataConfig, ModelConfig, TrainConfig
+from configs.local_config import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
 from utils.logger import Logger
@@ -17,6 +19,8 @@ from utils.misc import create_3d_grid, check_mesh_contains
 
 
 def main(test=False):
+
+    open("bad_files.txt", "w").close()  # Erase previous bad files
     print("Batch size: ", TrainConfig.mb_size)
     print("BackBone input dimension: ", DataConfig.partial_points)
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
@@ -62,6 +66,7 @@ def main(test=False):
                               num_workers=TrainConfig.num_workers,
                               pin_memory=True,
                               generator=g)
+
     print("Loaded ", len(train_loader), " train instances")
 
     valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid"),
@@ -74,6 +79,8 @@ def main(test=False):
     losses = []
     accuracies = []
     object_id = None
+    padding_lengths = []
+    best_val_acc = 0
 
     for e in range(TrainConfig().n_epoch):
         #########
@@ -81,16 +88,17 @@ def main(test=False):
         #########
         # TODO just created new branch, create one hot vector and add it to global feature
         model.train()
-        for idx, (label, partial, data, imp_x, imp_y) in enumerate(
+        for idx, (label, partial, data, imp_x, imp_y, padding_length) in enumerate(
                 tqdm(train_loader, position=0, leave=True, desc="Epoch " + str(e))):
 
+            padding_lengths.append(padding_length)
             complete = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
 
             if ModelConfig.use_object_id:
-                object_id = torch.zeros((TrainConfig.mb_size, DataConfig.n_classes), dtype=torch.float).to(x.device)
-                object_id[torch.arange(0, 8), label] = 1.
+                object_id = torch.zeros((x.shape[0], DataConfig.n_classes), dtype=torch.float).to(x.device)
+                object_id[torch.arange(0, x.shape[0]), label] = 1.
 
             out = model(partial, x, object_id)
             out = out.squeeze()
@@ -119,7 +127,8 @@ def main(test=False):
                 logger.log_metrics({"train/loss": sum(losses) / len(losses),
                                     "train/accuracy": sum(accuracies) / len(accuracies),
                                     "train/out": out,
-                                    "train/step": idx + e * len(train_loader)})
+                                    "train/step": idx + e * len(train_loader),
+                                    "train/padding_length": sum(padding_lengths) / len(padding_lengths)})
                 losses = []
                 accuracies = []
 
@@ -168,8 +177,17 @@ def main(test=False):
                 if test:
                     break
 
+        val_acc = sum(val_accuracies) / len(val_accuracies)
         logger.log_metrics({"validation/loss": sum(val_losses) / len(val_losses),
-                            "validation/accuracy": sum(val_accuracies) / len(val_accuracies)})
+                            "validation/accuracy": val_acc})
+
+        # Save best model
+        if TrainConfig.save_ckpt is not None:
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save(model.state_dict(), Path("checkpoint") / TrainConfig.save_ckpt)
+                print("New best checkpoint saved :D ", val_acc)
+
         reconstruction = torch.cat((x[0], pred[0]), dim=-1).detach().cpu().numpy()
         original = torch.cat((x[0], y[0]), dim=-1).detach().cpu().numpy()
 
