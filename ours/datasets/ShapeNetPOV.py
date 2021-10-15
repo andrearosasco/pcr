@@ -79,7 +79,7 @@ class ShapeNet(data.Dataset):
             diff = self.partial_points - partial_pcd.shape[0]
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
             # print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
-            padding_length = diff.mean().item()
+            padding_length = diff
         else:
             partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
 

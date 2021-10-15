@@ -90,7 +90,7 @@ def main(test=False):
         for idx, (label, partial, data, imp_x, imp_y, padding_length) in enumerate(
                 tqdm(train_loader, position=0, leave=True, desc="Epoch " + str(e))):
 
-            padding_lengths.append(padding_length)
+            padding_lengths.append(padding_length.mean().item())
             complete = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
