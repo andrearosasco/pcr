@@ -53,7 +53,6 @@ def git_hash() -> str:
 
 @dataclass
 class TrainConfig:
-    difficulty = "easy"
     device = device
     visible_dev = '0'
     mb_size = 8 if local else 64

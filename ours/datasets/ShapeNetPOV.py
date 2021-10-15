@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.utils.data as data
 import open3d as o3d
+o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
 
@@ -40,7 +41,6 @@ class ShapeNet(data.Dataset):
         return pcs
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
-        print(self.data_root / self.samples[idx].strip())
         padding_length = 0
 
         # Extract point cloud from mesh
@@ -78,8 +78,8 @@ class ShapeNet(data.Dataset):
         if partial_pcd.shape[0] < self.partial_points:
             diff = self.partial_points - partial_pcd.shape[0]
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
-            print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
-            padding_length = diff
+            # print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
+            padding_length = diff.mean().item()
         else:
             partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
 
