@@ -17,7 +17,8 @@ class DataConfig:
     multiplier_complete_sampling = 3
     noise_rate = 0.02
     percentage_sampled = 0.1
-    mode = 'train' # train, valid, test
+    mode = 'train'  # train, valid, test
+    n_classes = 55
 
 
 @dataclass
@@ -39,6 +40,10 @@ class ModelConfig:
     out_size = 1024
     # Implicit Function
     hidden_dim = 32
+    # Others
+    use_object_id = True
+    use_deep_weights_generator = True
+    n_classes = 55
 
 
 def git_hash() -> str:
