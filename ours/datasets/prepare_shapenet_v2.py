@@ -34,5 +34,3 @@ for file in sp.rglob('*'):
             with Path('./out').open('w+') as f:
                 print(e.__str__(), file=f)
                 print(file, file=f)
-
-
