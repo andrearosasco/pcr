@@ -43,7 +43,7 @@ class ShapeNet(data.Dataset):
         print(self.data_root / self.samples[idx].strip())
         # Get label
         dir_path = self.data_root / self.samples[idx].strip()
-        label = self.labels_map[dir_path.parent.name]
+        label = int(self.labels_map[dir_path.parent.name])
 
         # Extract point cloud from mesh
         tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)  # ERRORE QUA!!!
@@ -94,7 +94,7 @@ class ShapeNet(data.Dataset):
             mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
             return label, mesh_path, partial_pcd
 
-        return label, complete_pcd, partial_pcd, imp_x, imp_y
+        return label, partial_pcd, complete_pcd, imp_x, imp_y
 
     def __len__(self):
         return self.n_samples

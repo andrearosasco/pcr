@@ -12,7 +12,7 @@ device = "cuda"
 
 @dataclass
 class DataConfig:
-    dataset_path = "../../data/ShapeNetCore.v2"
+    dataset_path = "../data/ShapeNetCore.v2"
     partial_points = 2048
     multiplier_complete_sampling = 3
     noise_rate = 0.02
@@ -58,7 +58,7 @@ class TrainConfig:
     mb_size = 8
     n_epoch = 20
     clip_value = 5
-    log_metrics_every = 100
+    log_metrics_every = 1
     log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge
     num_workers = 0

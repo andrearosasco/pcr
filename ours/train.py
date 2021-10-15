@@ -89,7 +89,8 @@ def main(test=False):
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
 
             if ModelConfig.use_object_id:
-                object_id = one_hot(idx, DataConfig.n_classes)  # 55 total classes
+                object_id = torch.zeros((TrainConfig.mb_size, DataConfig.n_classes), dtype=torch.float).to(x.device)
+                object_id[torch.arange(0, 8), label] = 1.
 
             out = model(partial, x, object_id)
             out = out.squeeze()
@@ -118,7 +119,7 @@ def main(test=False):
                 logger.log_metrics({"train/loss": sum(losses) / len(losses),
                                     "train/accuracy": sum(accuracies) / len(accuracies),
                                     "train/out": out,
-                                    "train/step": idx})
+                                    "train/step": idx + e * len(train_loader)})
                 losses = []
                 accuracies = []
 
@@ -178,7 +179,8 @@ def main(test=False):
         logger.log_point_clouds({"reconstruction": reconstruction,
                                  "original": original,
                                  "reconstruction_kept": reconstruction_kept,
-                                 "original_kept": original_kept})
+                                 "original_kept": original_kept,
+                                 "validation/step": e})
 
         if test:
             break

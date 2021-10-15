@@ -5,15 +5,20 @@ from torch.nn.init import trunc_normal_
 from .Transformer import PCTransformer
 
 
-def deep_hn(input_size, output_size, hidden_size=None):
-    if hidden_size is None:
-        hidden_size = input_size + output_size
-    return nn.Sequential(
-        nn.Linear(input_size, hidden_size),
-        torch.nn.GELU(),
-        torch.nn.LayerNorm(hidden_size),
-        nn.Linear(hidden_size, output_size)
-    )
+class MLP(nn.Module):
+    def __init__(self, input_size, output_size, hidden_size=None):
+        super().__init__()
+        if hidden_size is None:
+            hidden_size = input_size + output_size
+        self.layers = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            torch.nn.GELU(),
+            torch.nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, output_size)
+        )
+
+    def forward(self, x):
+        return self.layers(x)
 
 
 class HyperNetwork(nn.Module):
@@ -48,7 +53,7 @@ class BackBone(nn.Module):
 
         # Select between deep feature extractor and not
         if config.use_deep_weights_generator:
-            generator = deep_hn
+            generator = MLP
         else:
             generator = nn.Linear
 
@@ -68,7 +73,7 @@ class BackBone(nn.Module):
         for _ in range(2):
             self.output.append(nn.ModuleList([
                     generator(global_size, config.hidden_dim * config.hidden_dim),
-                    generator(global_size, config.hidden_dime),
+                    generator(global_size, config.hidden_dim),
                     generator(global_size, config.hidden_dim)
                 ]))
         # Generate weights, biases and scales of the output layer of the implicit function
