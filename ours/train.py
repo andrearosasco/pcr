@@ -2,6 +2,7 @@ import os
 import random
 import numpy as np
 from torch import nn
+from torch.nn.functional import one_hot
 from torch.nn.utils import clip_grad_value_
 import open3d as o3d
 from torch.utils.data import DataLoader
@@ -72,11 +73,13 @@ def main(test=False):
 
     losses = []
     accuracies = []
+    object_id = None
 
     for e in range(TrainConfig().n_epoch):
         #########
         # TRAIN #
         #########
+        # TODO just created new branch, create one hot vector and add it to global feature
         model.train()
         for idx, (label, partial, data, imp_x, imp_y) in enumerate(
                 tqdm(train_loader, position=0, leave=True, desc="Epoch " + str(e))):
@@ -85,7 +88,10 @@ def main(test=False):
             partial = partial.to(TrainConfig().device)
             x, y = imp_x.to(ModelConfig.device), imp_y.to(ModelConfig.device)
 
-            out = model(partial, x)
+            if ModelConfig.use_object_id:
+                object_id = one_hot(idx, DataConfig.n_classes)  # 55 total classes
+
+            out = model(partial, x, object_id)
             out = out.squeeze()
 
             loss_value = loss_function(out, y).sum(dim=1).mean()
