@@ -44,21 +44,10 @@ class ShapeNet(data.Dataset):
         padding_length = 0
 
         # Extract point cloud from mesh
-        while True:
-            try:
-                dir_path = self.data_root / self.samples[idx].strip()
-                import os
-                if os.path.exists(self.data_root / self.samples[idx].strip() / "images"):
-                    os.rename(self.data_root / self.samples[idx].strip() / "images",
-                              self.data_root / self.samples[idx].strip() / "imgs", )
-                label = int(self.labels_map[dir_path.parent.name])
-                tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
-                complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
-                break
-            except Exception as e:
-                with open("bad_files.txt", "a") as f:
-                    print(self.data_root / self.samples[idx].strip(), file=f)
-                idx = random.randint(0, len(self))
+        dir_path = self.data_root / self.samples[idx].strip()
+        label = int(self.labels_map[dir_path.parent.name])
+        tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
+        complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
         # Get random position of camera
         sph_radius = 1

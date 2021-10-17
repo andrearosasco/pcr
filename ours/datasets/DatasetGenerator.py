@@ -65,6 +65,6 @@ class DatasetGenerator:
 
 
 if __name__ == "__main__":
-    from configs.cfg1 import DataConfig
+    from configs.local_config import DataConfig
     iterator = DatasetGenerator(DataConfig.dataset_path, [0.7, 0.1, 0.2], oversampling=True)
     iterator.generate()
