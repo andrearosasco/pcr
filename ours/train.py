@@ -55,7 +55,9 @@ def main(test=False):
     optimizer = TrainConfig.optimizer(model.parameters(), lr=1e-4)
 
     # WANDB
-    logger = Logger(model, active=False)
+    logger = Logger(active=True)
+    logger.log_model(model)
+    logger.log_config()
 
     # Dataset
     train_loader = DataLoader(ShapeNet(DataConfig, mode="train"),
@@ -147,8 +149,8 @@ def main(test=False):
                                          "implicit_function_input": implicit_function_input,
                                          "implicit_function_output": implicit_function_output})
 
-            # if test:
-            break
+            if test:
+                break
         ########
         # EVAL #
         ########

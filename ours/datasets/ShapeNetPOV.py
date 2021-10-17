@@ -1,5 +1,7 @@
 import random
 from pathlib import Path
+
+from utils.logger import Logger
 from utils.misc import fps
 import numpy as np
 import torch
@@ -9,6 +11,7 @@ o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
 
+logger = Logger()
 
 class ShapeNet(data.Dataset):
     def __init__(self, config, mode="train"):
@@ -40,6 +43,12 @@ class ShapeNet(data.Dataset):
         pcs = pcs / m
         return pcs
 
+    # TODO refactor, it's a mess.
+    # TODO different behavior for test e valid in the same get_item. Maybe 2 get item and an if
+    # TODO maybe return just the mesh and the partial pcd in any case but then impx computation is not parallelized
+
+    # TODO uniform sampling to avoid padding
+
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
         padding_length = 0
 
@@ -69,12 +78,13 @@ class ShapeNet(data.Dataset):
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
             # print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
             padding_length = diff
+
         else:
             partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
 
-        if self.mode == "valid":
+        if self.mode in ['valid', 'test']:
             mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
-            return label, mesh_path, partial_pcd
+            return label, partial_pcd, mesh_path,
 
         complete_pcd = np.array(complete_pcd.points)
         complete_pcd = torch.FloatTensor(complete_pcd)
@@ -84,18 +94,6 @@ class ShapeNet(data.Dataset):
                                           self.percentage_sampled)
         imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).bool().float().bool().float()  # TODO oh god..
 
-        # Set partial_pcd such that it has the same size of the others
-        if partial_pcd.shape[0] < self.partial_points:
-            diff = self.partial_points - partial_pcd.shape[0]
-            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
-            print(f"[ShapeNetPOV] WARNING: padding incomplete point cloud with {diff} points")
-        else:
-            partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
-
-        if self.mode == "valid":
-            mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
-            return label, mesh_path, partial_pcd
-
         return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
 
     def __len__(self):
@@ -103,7 +101,7 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from  ours.configs import DataConfig
+    from ours.configs import DataConfig
 
     iterator = ShapeNet(DataConfig)
     for elem in iterator:
