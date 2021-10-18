@@ -96,6 +96,7 @@ def main(test=False):
             if idx > 0:
                 print(f'Data = {time.time() - start_data}')  # TODO Remove
 
+            start_one_hot = time.time()  # TODO Remove
             padding_lengths.append(padding_length.float().mean().item())
             complete = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
@@ -105,6 +106,7 @@ def main(test=False):
                 object_id = torch.zeros((x.shape[0], DataConfig.n_classes), dtype=torch.float).to(x.device)
                 object_id[torch.arange(0, x.shape[0]), label] = 1.
 
+            print(f'One hot = {time.time() - start_one_hot}')  # TODO Remove
             start_train = time.time() # TODO Remove
             out = model(partial, x, object_id)
             out = out.squeeze()
