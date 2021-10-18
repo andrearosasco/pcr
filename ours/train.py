@@ -1,5 +1,4 @@
 from utils.logger import Logger
-logger = Logger(active=True)
 
 import os
 import random
@@ -20,6 +19,7 @@ from utils.misc import create_3d_grid, check_mesh_contains
 
 
 def main(test=False):
+    logger = Logger(active=True)
 
     open("bad_files.txt", "w").close()  # Erase previous bad files
     print("Batch size: ", TrainConfig.mb_size)
@@ -184,7 +184,7 @@ def main(test=False):
 
         val_acc = sum(val_accuracies) / len(val_accuracies)
         logger.log_metrics({"validation/loss": sum(val_losses) / len(val_losses),
-                            "validation/accuracy": val_acc})
+                            "validation/accuracy": val_acc, "validation/step": e})
 
         # Save best model
         if TrainConfig.save_ckpt is not None:
@@ -202,8 +202,7 @@ def main(test=False):
         logger.log_point_clouds({"reconstruction": reconstruction,
                                  "original": original,
                                  "reconstruction_kept": reconstruction_kept,
-                                 "original_kept": original_kept,
-                                 "validation/step": e})
+                                 "original_kept": original_kept})
 
         if test:
             break
