@@ -67,4 +67,4 @@ class TrainConfig:
     loss = torch.nn.BCEWithLogitsLoss
 
     load_ckpt = None
-    save_ckpt = datetime.now().strftime('%d-%m-%y_%H:%M')
+    save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H:%M')}.ptc"

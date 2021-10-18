@@ -1,10 +1,7 @@
 import random
 from pathlib import Path
-
 from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
-
-from utils.misc import fps
 import numpy as np
 import torch
 import torch.utils.data as data
@@ -12,7 +9,6 @@ import open3d as o3d
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
-import time
 
 
 class ShapeNet(data.Dataset):
