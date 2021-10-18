@@ -65,6 +65,7 @@ class TrainConfig:
     git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
+    implicit_input_dimension = 8192
 
     load_ckpt = None
     save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H:%M')}.ptc"

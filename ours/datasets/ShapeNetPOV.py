@@ -22,6 +22,7 @@ class ShapeNet(data.Dataset):
         # Implicit function input
         self.noise_rate = config.noise_rate
         self.percentage_sampled = config.percentage_sampled
+        self.implicit_input_dimension = config.implicit_input_dimension
 
         with (self.data_root / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
@@ -91,7 +92,8 @@ class ShapeNet(data.Dataset):
 
         imp_x, imp_y = sample_point_cloud(tm,
                                           self.noise_rate,
-                                          self.percentage_sampled)
+                                          self.percentage_sampled,
+                                          total=self.implicit_input_dimension)
         imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).bool().float().bool().float()  # TODO oh god..
 
         return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
@@ -106,6 +108,7 @@ if __name__ == "__main__":
 
     a = DataConfig()
     a.dataset_path = Path("..", "..", "data", "ShapeNetCore.v2")
+    a.mode = "microwaves"
     iterator = ShapeNet(a)
     for elem in tqdm(iterator):
         lab, part, comp, x, y, pad = elem
