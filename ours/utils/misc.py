@@ -284,7 +284,7 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192,
     # pc.points = Vector3dVector(points)
     # open3d.visualization.draw_geometries([pc])
 
-    scene =o3d.t.geometry.RaycastingScene()
+    scene = o3d.t.geometry.RaycastingScene()
     mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
     _ = scene.add_triangles(mesh)
     query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)

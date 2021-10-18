@@ -1,7 +1,9 @@
 import random
 from pathlib import Path
 
-from utils.logger import Logger
+from open3d.cpu.pybind.geometry import PointCloud
+from open3d.cpu.pybind.utility import Vector3dVector
+
 from utils.misc import fps
 import numpy as np
 import torch
@@ -10,8 +12,8 @@ import open3d as o3d
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
+import time
 
-logger = Logger()
 
 class ShapeNet(data.Dataset):
     def __init__(self, config, mode="train"):
@@ -55,7 +57,7 @@ class ShapeNet(data.Dataset):
         # Extract point cloud from mesh
         dir_path = self.data_root / self.samples[idx].strip()
         label = int(self.labels_map[dir_path.parent.name])
-        tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
+        tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), False)
         complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
         # Get random position of camera
@@ -103,15 +105,31 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from ours.configs import DataConfig
+    from ours.configs.local_config import DataConfig
+    from tqdm import tqdm
 
-    iterator = ShapeNet(DataConfig)
-    for elem in iterator:
-        # lab, comp, part, x, y = elem
-        # print(lab)
-        # pc = PointCloud()
-        # pc.points = Vector3dVector(part)
-        # o3d.visualization.draw_geometries([pc])
+    a = DataConfig()
+    a.dataset_path = Path("..", "..", "data", "ShapeNetCore.v2")
+    iterator = ShapeNet(a)
+    for elem in tqdm(iterator):
+        lab, part, comp, x, y, pad = elem
+        print(lab)
+
+        points = []
+        for _ in range(1000):
+            points.append(np.array([1, random.uniform(-1, 1), random.uniform(-1, 1)]))
+            points.append(np.array([-1, random.uniform(-1, 1), random.uniform(-1, 1)]))
+            points.append(np.array([random.uniform(-1, 1), 1, random.uniform(-1, 1)]))
+            points.append(np.array([random.uniform(-1, 1), -1, random.uniform(-1, 1)]))
+            points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), 1]))
+            points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), -1]))
+
+        points = np.stack(points)
+        points = np.concatenate((points, comp))
+        pc = PointCloud()
+        pc.points = Vector3dVector(points)
+        o3d.visualization.draw_geometries([pc])
+
         #
         # pc = PointCloud()
         # pc.points = Vector3dVector(comp)
