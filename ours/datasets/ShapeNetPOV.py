@@ -1,7 +1,7 @@
 import random
 from pathlib import Path
-from open3d.cpu.pybind.geometry import PointCloud
-from open3d.cpu.pybind.utility import Vector3dVector
+# from open3d.cpu.pybind.geometry import PointCloud
+# from open3d.cpu.pybind.utility import Vector3dVector
 import numpy as np
 import torch
 import torch.utils.data as data
@@ -122,28 +122,11 @@ if __name__ == "__main__":
             points.append(np.array([random.uniform(-1, 1), -1, random.uniform(-1, 1)]))
             points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), 1]))
             points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), -1]))
-
-        points = np.stack(points)
-        points = np.concatenate((points, comp))
-        pc = PointCloud()
-        pc.points = Vector3dVector(points)
-        o3d.visualization.draw_geometries([pc])
-
         #
+        # points = np.stack(points)
+        # points = np.concatenate((points, comp))
         # pc = PointCloud()
-        # pc.points = Vector3dVector(comp)
-        # colors = []
-        # t = 0
-        # f = 0
-        # for point in y:
-        #     if point == 1:
-        #         colors.append(np.array([0, 1, 0]))
-        #         t += 1
-        #     else:
-        #         colors.append(np.array([1, 0, 0]))
-        #         f += 1
-        # # colors = np.stack(colors)
-        # # colors = Vector3dVector(colors)
-        # # pc.colors = colors
-        # o3d.visualization.draw_geometries([pc], window_name="Green "+str(t) + ", red: " + str(f))
+        # pc.points = Vector3dVector(points)
+        # o3d.visualization.draw_geometries([pc])
+
         pass
