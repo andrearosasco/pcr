@@ -81,7 +81,9 @@ class ShapeNet(data.Dataset):
             # print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
             padding_length = diff
         else:
-            partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
+            # partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
+            indices = torch.multinomial(partial_pcd[:, 0].fill_(1./torch.numel(partial_pcd[:, 0])), self.partial_points)
+            partial_pcd = partial_pcd[indices]
 
         if self.mode == "valid":
             mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
