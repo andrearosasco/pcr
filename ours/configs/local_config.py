@@ -44,7 +44,7 @@ class ModelConfig:
     hidden_dim = 32
     # Others
     use_object_id = True
-    use_deep_weights_generator = False
+    use_deep_weights_generator = True
     n_classes = 55
 
 

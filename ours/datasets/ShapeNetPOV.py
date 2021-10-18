@@ -1,7 +1,5 @@
 import random
 from pathlib import Path
-# from open3d.cpu.pybind.geometry import PointCloud
-# from open3d.cpu.pybind.utility import Vector3dVector
 import numpy as np
 import torch
 import torch.utils.data as data
@@ -64,7 +62,14 @@ class ShapeNet(data.Dataset):
         x = np.sqrt(sph_radius ** 2 - y ** 2) * cos(theta)
         z = np.sqrt(sph_radius ** 2 - y ** 2) * sin(theta)
         camera = [x, y, z]
-        # TODO normalize
+
+        # Center to be in the middle
+        points = np.array(complete_pcd.points)
+        center = [max((points[:, 0] + min(points[:, 0]))/2),
+                  max((points[:, 1] + min(points[:, 1]))/2),
+                  max((points[:, 2] + min(points[:, 2]))/2)]
+        center = np.array(center)[None, ...].repeat(len(points), axis=0)
+        complete_pcd.points = Vector3dVector(points - center)
 
         # Remove hidden points
         _, pt_map = complete_pcd.hidden_point_removal(camera, 500)  # radius * 4
@@ -103,30 +108,31 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from ours.configs.local_config import DataConfig
-    from tqdm import tqdm
-
-    a = DataConfig()
-    a.dataset_path = Path("..", "..", "data", "ShapeNetCore.v2")
-    a.mode = "microwaves"
-    iterator = ShapeNet(a)
-    for elem in tqdm(iterator):
-        lab, part, comp, x, y, pad = elem
-        print(lab)
-
-        points = []
-        for _ in range(1000):
-            points.append(np.array([1, random.uniform(-1, 1), random.uniform(-1, 1)]))
-            points.append(np.array([-1, random.uniform(-1, 1), random.uniform(-1, 1)]))
-            points.append(np.array([random.uniform(-1, 1), 1, random.uniform(-1, 1)]))
-            points.append(np.array([random.uniform(-1, 1), -1, random.uniform(-1, 1)]))
-            points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), 1]))
-            points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), -1]))
-        #
-        # points = np.stack(points)
-        # points = np.concatenate((points, comp))
-        # pc = PointCloud()
-        # pc.points = Vector3dVector(points)
-        # o3d.visualization.draw_geometries([pc])
-
-        pass
+    # from ours.configs.local_config import DataConfig
+    # from tqdm import tqdm
+    # from open3d.cpu.pybind.geometry import PointCloud
+    # from open3d.cpu.pybind.utility import Vector3dVector
+    #
+    # a = DataConfig()
+    # a.dataset_path = Path("..", "..", "data", "ShapeNetCore.v2")
+    # iterator = ShapeNet(a, "microwaves")
+    # for elem in tqdm(iterator):
+    #     lab, part, comp, x, y, pad = elem
+    #     print(lab)
+    #
+    #     points = []
+    #     for _ in range(1000):
+    #         points.append(np.array([1, random.uniform(-1, 1), random.uniform(-1, 1)]))
+    #         points.append(np.array([-1, random.uniform(-1, 1), random.uniform(-1, 1)]))
+    #         points.append(np.array([random.uniform(-1, 1), 1, random.uniform(-1, 1)]))
+    #         points.append(np.array([random.uniform(-1, 1), -1, random.uniform(-1, 1)]))
+    #         points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), 1]))
+    #         points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), -1]))
+    #
+    #     points = np.stack(points)
+    #     points = np.concatenate((points, comp))
+    #     pc = PointCloud()
+    #     pc.points = Vector3dVector(points)
+    #     o3d.visualization.draw_geometries([pc])
+    #
+    #     pass
