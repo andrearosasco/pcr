@@ -1,3 +1,6 @@
+from utils.logger import Logger
+logger = Logger(active=False)
+
 import os
 import random
 import time
@@ -13,7 +16,6 @@ import torch
 from configs.local_config import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
-from utils.logger import Logger
 from utils.misc import create_3d_grid, check_mesh_contains
 
 
@@ -55,7 +57,6 @@ def main(test=False):
     optimizer = TrainConfig.optimizer(model.parameters(), lr=1e-4)
 
     # WANDB
-    logger = Logger(active=True)
     logger.log_model(model)
     logger.log_config()
 
@@ -160,7 +161,7 @@ def main(test=False):
         val_accuracies = []
         model.eval()
         with torch.no_grad():
-            for idx, (label, mesh, partial) in enumerate(
+            for idx, (label, partial, mesh) in enumerate(
                     tqdm(valid_loader, position=0, leave=True, desc="Validation " + str(e))):
                 partial = partial.to(TrainConfig.device)
 
