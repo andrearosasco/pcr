@@ -35,5 +35,6 @@ i = 0
 for cls in sp.glob('*'):
     for inst in cls.glob('*'):
         if (inst / 'images').exists():
+            i += 1
             (inst / 'images').rename((inst / 'imgs'))
-
+print('Modified', i, 'instances')
