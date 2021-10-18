@@ -4,20 +4,36 @@ import copy
 import torch
 
 
-class Logger:
-    def __init__(self, model, active=True):
+class Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+# TODO save a default separate step for everything in a dict with the option of specifing one
+class Logger(metaclass=Singleton):
+    def __init__(self, active=True):
         self.active = active
         if active:
             wandb.login(key="f5f77cf17fad38aaa2db860576eee24bde163b7a")
             wandb.init(project='pcr', entity='coredump')
             # transform class into dict to log it to wandb
+
+    def log_model(self, model):
+        if self.active:
+            wandb.watch(model, log="all", log_freq=1, log_graph=True)
+
+    def log_config(self):
+        if self.active:
             wandb.config["train"] = {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
                                      not k.startswith("__")}
             wandb.config["model"] = {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
                                      not k.startswith("__")}
             wandb.config["data"] = {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-                                    not k.startswith("__")}
-            wandb.watch(model, log="all", log_freq=1, log_graph=True)
+                                not k.startswith("__")}
 
     def log_metrics(self, metrics):
         """

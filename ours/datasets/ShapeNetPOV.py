@@ -1,5 +1,7 @@
 import random
 from pathlib import Path
+
+from utils.logger import Logger
 from utils.misc import fps
 import numpy as np
 import torch
@@ -9,6 +11,7 @@ o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
 
+logger = Logger()
 
 class ShapeNet(data.Dataset):
     def __init__(self, config, mode="train"):
@@ -40,25 +43,20 @@ class ShapeNet(data.Dataset):
         pcs = pcs / m
         return pcs
 
+    # TODO refactor, it's a mess.
+    # TODO different behavior for test e valid in the same get_item. Maybe 2 get item and an if
+    # TODO maybe return just the mesh and the partial pcd in any case but then impx computation is not parallelized
+
+    # TODO uniform sampling to avoid padding
+
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
         padding_length = 0
 
         # Extract point cloud from mesh
-        while True:
-            try:
-                dir_path = self.data_root / self.samples[idx].strip()
-                import os
-                if os.path.exists(self.data_root / self.samples[idx].strip() / "images"):
-                    os.rename(self.data_root / self.samples[idx].strip() / "images",
-                              self.data_root / self.samples[idx].strip() / "imgs", )
-                label = int(self.labels_map[dir_path.parent.name])
-                tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
-                complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
-                break
-            except Exception as e:
-                with open("bad_files.txt", "a") as f:
-                    print(self.data_root / self.samples[idx].strip(), file=f)
-                idx = random.randint(0, len(self))
+        dir_path = self.data_root / self.samples[idx].strip()
+        label = int(self.labels_map[dir_path.parent.name])
+        tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), True)
+        complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
         # Get random position of camera
         sph_radius = 1
@@ -80,14 +78,15 @@ class ShapeNet(data.Dataset):
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
             # print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
             padding_length = diff
+
         else:
             # partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
             indices = torch.multinomial(partial_pcd[:, 0].fill_(1./torch.numel(partial_pcd[:, 0])), self.partial_points)
             partial_pcd = partial_pcd[indices]
 
-        if self.mode == "valid":
+        if self.mode in ['valid', 'test']:
             mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
-            return label, mesh_path, partial_pcd
+            return label, partial_pcd, mesh_path,
 
         complete_pcd = np.array(complete_pcd.points)
         complete_pcd = torch.FloatTensor(complete_pcd)
@@ -97,18 +96,6 @@ class ShapeNet(data.Dataset):
                                           self.percentage_sampled)
         imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).bool().float().bool().float()  # TODO oh god..
 
-        # Set partial_pcd such that it has the same size of the others
-        if partial_pcd.shape[0] < self.partial_points:
-            diff = self.partial_points - partial_pcd.shape[0]
-            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
-            print(f"[ShapeNetPOV] WARNING: padding incomplete point cloud with {diff} points")
-        else:
-            partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
-
-        if self.mode == "valid":
-            mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
-            return label, mesh_path, partial_pcd
-
         return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
 
     def __len__(self):
@@ -116,7 +103,7 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from  ours.configs import DataConfig
+    from ours.configs import DataConfig
 
     iterator = ShapeNet(DataConfig)
     for elem in iterator:

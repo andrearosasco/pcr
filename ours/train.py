@@ -55,7 +55,9 @@ def main(test=False):
     optimizer = TrainConfig.optimizer(model.parameters(), lr=1e-4)
 
     # WANDB
-    logger = Logger(model, active=True)
+    logger = Logger(active=True)
+    logger.log_model(model)
+    logger.log_config()
 
     # Dataset
     train_loader = DataLoader(ShapeNet(DataConfig, mode="train"),
@@ -162,7 +164,12 @@ def main(test=False):
                     tqdm(valid_loader, position=0, leave=True, desc="Validation " + str(e))):
                 partial = partial.to(TrainConfig.device)
 
-                out = model(partial, x)
+                # TODO we are passing 100k points (too much?)
+                if ModelConfig.use_object_id:
+                    object_id = torch.zeros((x.shape[0], DataConfig.n_classes), dtype=torch.float).to(x.device)
+                    object_id[torch.arange(0, x.shape[0]), label] = 1.
+
+                out = model(partial, x, object_id)
 
                 y = check_mesh_contains(mesh, x)  # TODO PARALLELIZE IT
                 y = torch.FloatTensor(y).to(out.device)

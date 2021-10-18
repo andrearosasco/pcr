@@ -49,7 +49,8 @@ class DatasetGenerator:
             valid.extend(valid_local)
             test.extend(test_local)
 
-        assert len(train) == max_train * len(classes)
+        if self.oversampling:
+            assert len(train) == max_train * len(classes)
 
         with (self.data_path / "train.txt").open('w') as f:
             lines = [f'{elem.parent.name}/{elem.name}' for elem in train]
@@ -65,6 +66,6 @@ class DatasetGenerator:
 
 
 if __name__ == "__main__":
-    from configs.cfg1 import DataConfig
+    from configs.local_config import DataConfig
     iterator = DatasetGenerator(DataConfig.dataset_path, [0.7, 0.1, 0.2], oversampling=True)
     iterator.generate()
