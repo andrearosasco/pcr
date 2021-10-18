@@ -21,6 +21,7 @@ class DataConfig:
     percentage_sampled = 0.1
     mode = 'train'  # train, valid, test
     n_classes = 55
+    implicit_input_dimension = 8192
 
 
 @dataclass
@@ -65,7 +66,7 @@ class TrainConfig:
     git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
-    implicit_input_dimension = 8192
+
 
     load_ckpt = None
     save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H:%M')}.ptc"
