@@ -1,5 +1,5 @@
 from utils.logger import Logger
-logger = Logger(active=False)
+logger = Logger(active=True)
 
 import os
 import random
@@ -93,10 +93,6 @@ def main(test=False):
         for idx, (label, partial, data, imp_x, imp_y, padding_length) in enumerate(
                 tqdm(train_loader, position=0, leave=True, desc="Epoch " + str(e))):
 
-            if idx > 0:
-                print(f'Data = {time.time() - start_data}')  # TODO Remove
-
-            start_one_hot = time.time()  # TODO Remove
             padding_lengths.append(padding_length.float().mean().item())
             complete = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
@@ -106,8 +102,6 @@ def main(test=False):
                 object_id = torch.zeros((x.shape[0], DataConfig.n_classes), dtype=torch.float).to(x.device)
                 object_id[torch.arange(0, x.shape[0]), label] = 1.
 
-            print(f'One hot = {time.time() - start_one_hot}')  # TODO Remove
-            start_train = time.time() # TODO Remove
             out = model(partial, x, object_id)
             out = out.squeeze()
 
@@ -119,9 +113,7 @@ def main(test=False):
                 clip_grad_value_(model.parameters(), TrainConfig.clip_value)
 
             optimizer.step()
-            print(f'Model = {time.time() - start_train}') # TODO Remove
             # Logs
-            start_log = time.time()  # TODO Remove
             x = x.detach().cpu().numpy()
             y = y.detach().cpu().numpy()[..., None]
             out = out.detach().cpu().numpy()[..., None]
@@ -156,9 +148,6 @@ def main(test=False):
                                          "partial": partial,
                                          "implicit_function_input": implicit_function_input,
                                          "implicit_function_output": implicit_function_output})
-            print(f'Logging = {time.time() - start_log}')  # TODO Remove
-
-            start_data = time.time()  # TODO Remove
             if test:
                 break
         ########

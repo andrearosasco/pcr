@@ -42,8 +42,8 @@ class ModelConfig:
     # Implicit Function
     hidden_dim = 32
     # Others
-    use_object_id = True
-    use_deep_weights_generator = True
+    use_object_id = False
+    use_deep_weights_generator = False
     n_classes = 55
 
 
@@ -58,8 +58,8 @@ class TrainConfig:
     mb_size = 8 if local else 64
     n_epoch = 20
     clip_value = 5
-    log_metrics_every = 1 if local else 100
-    log_pcs_every = 10000
+    log_metrics_every = 1 if local else 10
+    log_pcs_every = 1000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     num_workers = 4 if local else 20
     git = git_hash()
