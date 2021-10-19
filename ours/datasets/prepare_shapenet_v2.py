@@ -30,11 +30,25 @@ from nltk.corpus import wordnet
 # # To load just the mesh without attempting to read the textures we make them unreachable
 # # Loading certain bad textures makes open3d crash without any possibility of catching the error
 
+# sp = Path('..') / '..' / 'data' / 'ShapeNetCore.v2'
+# i = 0
+# for cls in sp.glob('*'):
+#     for inst in cls.glob('*'):
+#         if (inst / 'images').exists():
+#             i += 1
+#             (inst / 'images').rename((inst / 'imgs'))
+# print('Modified', i, 'instances')
+
 sp = Path('..') / '..' / 'data' / 'ShapeNetCore.v2'
 i = 0
+j = 0
 for cls in sp.glob('*'):
     for inst in cls.glob('*'):
-        if (inst / 'images').exists():
+        tm = o3d.io.read_triangle_mesh(str(inst / 'models/model_normalized.obj') , False)
+        if tm.is_watertight():
             i += 1
-            (inst / 'images').rename((inst / 'imgs'))
-print('Modified', i, 'instances')
+        else:
+            j += 1
+
+print(i)
+print(j)

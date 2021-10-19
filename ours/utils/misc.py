@@ -386,11 +386,11 @@ def check_mesh_contains(meshes, queries, max_dist=0.01):
     queries = queries.detach().cpu().numpy()
     for mesh, query in zip(meshes, queries):
         scene = o3d.t.geometry.RaycastingScene()
-        mesh = o3d.io.read_triangle_mesh(mesh, True)
+        mesh = o3d.io.read_triangle_mesh(mesh, False)
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
         _ = scene.add_triangles(mesh)
         query_points = o3d.core.Tensor(query, dtype=o3d.core.Dtype.Float32)
-        signed_distance = scene.compute_signed_distance(query_points)
+        signed_distance = scene.compute_distance(query_points)
         occupancies.append((signed_distance < max_dist).numpy())
     occupancies = np.stack(occupancies)[..., None]
     return occupancies.astype(float)

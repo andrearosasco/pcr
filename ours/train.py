@@ -1,4 +1,5 @@
 from utils.logger import Logger
+logger = Logger(active=False)
 
 import os
 import random
@@ -16,14 +17,16 @@ from configs.local_config import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
 from utils.misc import create_3d_grid, check_mesh_contains
+import open3d as o3d
 
 
 def main(test=False):
     logger = Logger(active=True)
-
     open("bad_files.txt", "w").close()  # Erase previous bad files
     print("Batch size: ", TrainConfig.mb_size)
     print("BackBone input dimension: ", DataConfig.partial_points)
+    if TrainConfig.overfit_mode:
+        print("ATTENTION: OVERFIT MODE IS ACTIVE!!!!!")
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 
     # Reproducibility
@@ -51,17 +54,17 @@ def main(test=False):
     model.train()
 
     # Loss
-    loss_function = TrainConfig.loss(reduction="none")
+    loss_function = TrainConfig.loss(reduction=TrainConfig.loss_reduction)
 
     # Optimizer
-    optimizer = TrainConfig.optimizer(model.parameters(), lr=1e-4)
+    optimizer = TrainConfig.optimizer(model.parameters(), lr=TrainConfig.lr)
 
     # WANDB
     logger.log_model(model)
     logger.log_config()
 
     # Dataset
-    train_loader = DataLoader(ShapeNet(DataConfig, mode="train"),
+    train_loader = DataLoader(ShapeNet(DataConfig, mode="train", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
                               shuffle=True,
                               drop_last=True,
@@ -71,7 +74,7 @@ def main(test=False):
 
     print("Loaded ", len(train_loader), " train instances")
 
-    valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid"),
+    valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
@@ -105,7 +108,7 @@ def main(test=False):
             out = model(partial, x, object_id)
             out = out.squeeze()
 
-            loss_value = loss_function(out, y).sum(dim=1).mean()
+            loss_value = loss_function(out, y).sum(dim=-1).mean()  # sum and mean with one value doesn't change anything
 
             optimizer.zero_grad()
             loss_value.backward()
@@ -143,11 +146,13 @@ def main(test=False):
 
                 implicit_function_input = np.concatenate((x, y), axis=1)
                 implicit_function_output = np.concatenate((x, pred), axis=1)
+                implicit_function_output_just_true = implicit_function_input[implicit_function_input[:, 3] == 1.]
 
                 logger.log_point_clouds({"complete": complete,
                                          "partial": partial,
                                          "implicit_function_input": implicit_function_input,
-                                         "implicit_function_output": implicit_function_output})
+                                         "implicit_function_output": implicit_function_output,
+                                         "implicit_function_output_just_true": implicit_function_output_just_true})
             if test:
                 break
         ########
@@ -172,13 +177,12 @@ def main(test=False):
 
                 y = check_mesh_contains(mesh, x)  # TODO PARALLELIZE IT
                 y = torch.FloatTensor(y).to(out.device)
-                loss = loss_function(out, y).sum(dim=1).mean()
+                loss = loss_function(out, y).sum(dim=-1).mean()
                 val_losses.append(loss.item())
 
                 pred = copy.deepcopy(out) > 0.5
                 accuracy = (pred == y).sum().item() / torch.numel(pred)  # TODO numpy
                 val_accuracies.append(accuracy)
-
                 if test:
                     break
 
@@ -187,6 +191,7 @@ def main(test=False):
                             "validation/accuracy": val_acc, "validation/step": e})
 
         # Save best model
+        Path("checkpoint").mkdir(exist_ok=True)
         if TrainConfig.save_ckpt is not None:
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
@@ -199,10 +204,15 @@ def main(test=False):
         reconstruction_kept = reconstruction[reconstruction[..., -1] == 1.]
         original_kept = original[original[..., -1] == 1.]
 
+        total = o3d.io.read_triangle_mesh(mesh[0], False)
+        total = total.sample_points_uniformly(10000)
+        total = np.array(total.points)
+
         logger.log_point_clouds({"reconstruction": reconstruction,
                                  "original": original,
                                  "reconstruction_kept": reconstruction_kept,
-                                 "original_kept": original_kept})
+                                 "original_kept": original_kept,
+                                 "total": total})
 
         if test:
             break
