@@ -1,7 +1,10 @@
 from utils.logger import Logger
+logger = Logger(active=False)
+
 import os
 import random
 import time
+from datetime import datetime
 from pathlib import Path
 import numpy as np
 from torch import nn
@@ -67,11 +70,14 @@ def main(test=False):
                               pin_memory=True,
                               generator=g)
 
+    print("Loaded ", len(train_loader), " train instances")
+
     valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid"),
                               batch_size=TrainConfig.mb_size,
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
                               pin_memory=True)
+    print("Loaded ", len(valid_loader), " validation instances")
 
     losses = []
     accuracies = []
@@ -180,7 +186,7 @@ def main(test=False):
 
         val_acc = sum(val_accuracies) / len(val_accuracies)
         logger.log_metrics({"validation/loss": sum(val_losses) / len(val_losses),
-                            "validation/accuracy": val_acc})
+                            "validation/accuracy": val_acc, "validation/step": e})
 
         # Save best model
         Path("checkpoint").mkdir(exist_ok=True)

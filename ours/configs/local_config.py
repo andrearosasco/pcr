@@ -45,7 +45,7 @@ class ModelConfig:
     depth = 0 if local else 2
     # Others
     use_object_id = True
-    use_deep_weights_generator = True
+    use_deep_weights_generator = False
     n_classes = 55
     assert divmod(embed_dim, num_heads)[1] == 0
 
