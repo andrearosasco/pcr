@@ -1,12 +1,17 @@
 import open3d as o3d
 import torch
+import wandb
 from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
 from open3d.cpu.pybind.visualization import draw_geometries
 from pathlib import Path
 from torch import nn
+import torch.nn.functional as F
 from torch.optim import SGD
 import numpy as np
+
+wandb.login(key="f5f77cf17fad38aaa2db860576eee24bde163b7a")
+wandb.init(project='implicit_function', entity='coredump')
 
 # Load a mesh
 example = Path('..') / '..' / 'data/ShapeNetCore.v2/02691156/1a9b552befd6306cc8f2d5fe7449af61'
@@ -18,32 +23,35 @@ mesh = o3d.io.read_triangle_mesh(str(example / 'models/model_normalized.obj'), F
 # draw_geometries([complete_pcd])
 
 # Define the implicit function
-class ImplicitFunction(nn.Module):
+class ImplicitFunction:
     def __init__(self, device):
         super().__init__()
+        self.train = True
         self.relu = nn.LeakyReLU(0.2)
-        self.dropout = nn.Dropout(0.5)
 
         layers = []
 
+        # Using scales the gradient is around 1e-7
+        # Without scales the gradient is around 1e-5
+
         # Input Layer
         layers.append([
-            torch.zeros((3, 32), device=device, requires_grad=True),
-            torch.zeros((1, 32), device=device, requires_grad=True),
-            torch.zeros((1, 32), device=device, requires_grad=True)
+            torch.zeros((3, 64), device=device, requires_grad=True),
+            # torch.zeros((1, 64), device=device, requires_grad=True),
+            torch.zeros((1, 64), device=device, requires_grad=True)
         ])
 
         # Hidden Layers
-        for _ in range(2):
+        for _ in range(1):
             layers.append([
-                torch.zeros((32, 32), device=device, requires_grad=True),
-                torch.zeros((1, 32), device=device, requires_grad=True),
-                torch.zeros((1, 32), device=device, requires_grad=True)
+                torch.zeros((64, 64), device=device, requires_grad=True),
+                # torch.zeros((1, 64), device=device, requires_grad=True),
+                torch.zeros((1, 64), device=device, requires_grad=True)
             ])
 
         layers.append([
-            torch.zeros((32, 1), device=device, requires_grad=True),
-            torch.zeros((1, 1), device=device, requires_grad=True),
+            torch.zeros((64, 1), device=device, requires_grad=True),
+            # torch.zeros((1, 1), device=device, requires_grad=True),
             torch.zeros((1, 1), device=device, requires_grad=True)
         ])
 
@@ -52,20 +60,35 @@ class ImplicitFunction(nn.Module):
 
     def __call__(self, x):
         for l in self.layers[:-1]:
-            x = torch.mm(x, l[0]) * l[1] + l[2]
-            x = self.dropout(x)
+            x = torch.mm(x, l[0]) + l[1]
+            x = F.dropout(x, p=0.5, training=self.train)
             x = self.relu(x)
 
         l = self.layers[-1]
-        x = torch.mm(x, l[0]) * l[1] + l[2]
+        x = torch.mm(x, l[0]) + l[1]
 
         return x
 
+    def eval(self):
+        self.train = False
+
+    def train(self, **kwargs):
+        self.train = True
+
     def backward(self, loss):
+        # print('==================================== Zero Tensor ==============================================')
+
         for l in self.layers:
-            l[0].grad = torch.autograd.grad(loss, l[0])
-            l[1].grad = torch.autograd.grad(loss, l[1])
-            l[2].grad = torch.autograd.grad(loss, l[2])
+            l[0].grad, = torch.autograd.grad(loss, l[0], only_inputs=True, retain_graph=True)
+            # l[1].grad, = torch.autograd.grad(loss, l[1], only_inputs=True, retain_graph=True)
+            l[1].grad, = torch.autograd.grad(loss, l[1], only_inputs=True, retain_graph=True)
+
+        # print('==================================== Grad Tensor ==============================================')
+        # np.mean([p.grad.cpu().numpy() for p in self.layers[0]])
+        # print(np.vstack([p.grad.cpu().numpy() for p in self.layers[0]]).mean())
+        # print(np.vstack([p.grad.cpu().numpy() for p in self.layers[1]]).mean())
+        # print(np.vstack([p.grad.cpu().numpy() for p in self.layers[2]]).mean())
+        # print(np.vstack([p.grad.cpu().numpy() for p in self.layers[3]]).mean())
 
     def params(self):
         return [param for l in self.layers for param in l]
@@ -73,13 +96,13 @@ class ImplicitFunction(nn.Module):
     def _initialize(self):
         for l in self.layers:
             nn.init.xavier_uniform_(l[0])
-            nn.init.xavier_uniform_(l[1])
+            # nn.init.xavier_uniform_(l[1])
 
 
 f = ImplicitFunction('cuda')
 optim = SGD(f.params(), lr=0.05)
-criterion = torch.nn.BCEWithLogitsLoss()
-
+criterion = torch.nn.BCEWithLogitsLoss(reduction='mean')
+activation = nn.Sigmoid()
 # Mesh Sampling
 
 def uniform_signed_sampling(mesh, n_points=2048):
@@ -88,49 +111,95 @@ def uniform_signed_sampling(mesh, n_points=2048):
     n_mesh = int(n_points * 0.5)
 
     points_uniform = np.random.rand(n_uniform, 3) - 0.5
-
+    points_noisy = np.array(mesh.sample_points_uniformly(n_noise).points) + (0.1 * np.random.randn(n_noise, 3))
     points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points)
-    points_surface = points_surface + (0.1 * np.random.randn(len(points_surface), 3))
 
-    points = np.concatenate([points_uniform, points_surface], axis=0)
+    points = np.concatenate([points_uniform, points_noisy, points_surface], axis=0)
 
-    scene = o3d.t.geometry.RaycastingScene()
-    mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
-    _ = scene.add_triangles(mesh)
-    query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)
-
-    signed_distance = scene.compute_distance(query_points)
-    labels = signed_distance <= 0.001
-
+    labels = [False] * (n_uniform + n_noise) + [True] * n_mesh
     return points, labels
 
+# TODO too few positive examples
+# def uniform_signed_sampling(mesh, n_points=2048):
+#     n_uniform = int(n_points * 0.1)
+#     n_mesh = int(n_points * 0.9)
+#
+#     points_uniform = np.random.rand(n_uniform, 3) - 0.5
+#     points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points) + (0.1 * np.random.randn(n_mesh, 3))
+#
+#     points = np.concatenate([points_uniform, points_surface], axis=0)
+#
+#     scene = o3d.t.geometry.RaycastingScene()
+#     mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+#     _ = scene.add_triangles(mesh)
+#     query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)
+#
+#     unsigned_distance = scene.compute_distance(query_points)
+#     occupancies1 = -0.01 < unsigned_distance
+#     occupancies2 = unsigned_distance < 0.01
+#     labels = occupancies1 & occupancies2
+#
+#     return points, labels.numpy()
+
 # Encode
-for e in range(50):
-    x, y = uniform_signed_sampling(mesh, n_points=2048*2**7)
-
-    colors = []
-    points = []
-    for point, label in zip(x, y):
-        if label == 1:
-            colors.append(np.array([0, 1, 0]))
-            points.append(point)
-        # else:
-        #     colors.append(np.array([1, 0, 0]))
-    points, colors = np.stack(points), np.stack(colors)
-    points, colors = Vector3dVector(points), Vector3dVector(colors)
-
-    pc = PointCloud()
-    pc.points = points
-    print(len(points))
-    # pc.colors = colors
-
-    draw_geometries([pc])
-
+for e in range(10000):
+    x, y = uniform_signed_sampling(mesh, n_points=2048)
     x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
 
     out = f(x)
-    loss = criterion(out, y)
+    loss = criterion(out.squeeze(), y)
 
     optim.zero_grad()
     f.backward(loss)
     optim.step()
+
+    wandb.log({
+        'train/loss': loss.detach().cpu(),
+        'train/accuracy': torch.mean(((activation(out).detach().cpu() > 0.5) == y.detach().cpu()).float()),
+        'train/step': e
+    })
+
+colors = []
+points = []
+classes = []
+f.eval()
+for e in range(10):
+    x, y = uniform_signed_sampling(mesh, n_points=2048)
+    x, y = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
+
+    out = f(x)
+    loss = criterion(out.squeeze(), y)
+
+    pred = activation(out) > 0.5
+
+    wandb.log({
+        'train/loss': loss.detach().cpu(),
+        'train/accuracy': torch.mean((pred.detach().cpu() == y.detach().cpu()).float()),
+        'train/step': e
+    })
+
+    for point, pred, label in zip(x.cpu().numpy(), pred.cpu().numpy(), y):
+        if pred == 1:
+            if label == 1:
+                colors.append(np.array([0, 1, 0]))
+                classes.append(1)
+            else:
+                colors.append(np.array([1, 0, 0]))
+                classes.append(0)
+            points.append(point)
+        # else:
+            # colors.append(np.array([1, 0, 0]))
+            # points.append(point)
+
+points, colors = np.stack(points), np.stack(colors)
+points, colors = Vector3dVector(points), Vector3dVector(colors)
+
+pc = PointCloud()
+pc.points = points
+pc.colors = colors
+
+
+pcs = wandb.Object3D({"type": "lidar/beta", "points": np.stack(points, classes)})
+wandb.log(pcs)
+
+
