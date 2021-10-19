@@ -12,8 +12,9 @@ from utils.misc import sample_point_cloud
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="train"):
+    def __init__(self, config, mode="train", overfit_mode=False):
         self.mode = mode
+        self.overfit_mode = overfit_mode
         #  Backbone Input
         self.data_root = Path(config.dataset_path)
         self.partial_points = config.partial_points
@@ -56,9 +57,9 @@ class ShapeNet(data.Dataset):
         label = int(self.labels_map[dir_path.parent.name])
         complete_path = str(dir_path / 'models/model_normalized.obj')
 
-        # TODO START REMOVE
-        complete_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
-        # TODO END REMOVE
+        if self.overfit_mode:
+            complete_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+
         tm = o3d.io.read_triangle_mesh(complete_path, False)
         complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
@@ -95,10 +96,10 @@ class ShapeNet(data.Dataset):
             partial_pcd = partial_pcd[idx]
 
         if self.mode in ['valid', 'test']:
-            # mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
-            # TODO START REMOVE
-            mesh_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
-            # TODO END REMOVE
+            if self.overfit_mode:
+                mesh_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+            else:
+                mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
             return label, partial_pcd, mesh_path,
 
         complete_pcd = np.array(complete_pcd.points)
@@ -114,7 +115,7 @@ class ShapeNet(data.Dataset):
         return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
 
     def __len__(self):
-        return int(self.n_samples / 100)  # TODO REMOVE WHAT DO YOU SAY EH??????
+        return int(self.n_samples / 100 if self.overfit_mode else 1)
 
 
 if __name__ == "__main__":

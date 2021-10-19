@@ -45,7 +45,7 @@ class ModelConfig:
     depth = 0 if local else 2
     # Others
     use_object_id = True
-    use_deep_weights_generator = False
+    use_deep_weights_generator = True
     n_classes = 55
     assert divmod(embed_dim, num_heads)[1] == 0
 
@@ -72,3 +72,4 @@ class TrainConfig:
     loss_reduction = "mean"  # "none"
     load_ckpt = None
     save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H:%M')}.ptc"
+    overfit_mode = True

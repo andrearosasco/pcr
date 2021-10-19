@@ -25,6 +25,8 @@ def main(test=False):
     open("bad_files.txt", "w").close()  # Erase previous bad files
     print("Batch size: ", TrainConfig.mb_size)
     print("BackBone input dimension: ", DataConfig.partial_points)
+    if TrainConfig.overfit_mode:
+        print("ATTENTION: OVERFIT MODE IS ACTIVE!!!!!")
     os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 
     # Reproducibility
@@ -62,7 +64,7 @@ def main(test=False):
     logger.log_config()
 
     # Dataset
-    train_loader = DataLoader(ShapeNet(DataConfig, mode="train"),
+    train_loader = DataLoader(ShapeNet(DataConfig, mode="train", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
                               shuffle=True,
                               drop_last=True,
@@ -72,7 +74,7 @@ def main(test=False):
 
     print("Loaded ", len(train_loader), " train instances")
 
-    valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid"),
+    valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
