@@ -146,12 +146,12 @@ def uniform_signed_sampling(mesh, n_points=2048):
 #     return points, labels.numpy()
 
 # Encode
-x, y = uniform_signed_sampling(mesh, n_points=8192)
-x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
+# x, y = uniform_signed_sampling(mesh, n_points=8192)
+# x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
 
 for e in range(10000):
-    # x, y = uniform_signed_sampling(mesh, n_points=8192)
-    # x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
+    x, y = uniform_signed_sampling(mesh, n_points=8192)
+    x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
 
     out = f(x)
     loss = criterion(out.squeeze(), y)
@@ -166,7 +166,7 @@ for e in range(10000):
 
     wandb.log({
         'train/loss': loss.detach().cpu(),
-        'train/accuracy': torch.mean(((activation(out).detach().cpu() > 0.5).squeeze() == y.detach().cpu().bool()).float()),
+        'train/accuracy': torch.mean(((activation(out).detach().cpu() > 0.8).squeeze() == y.detach().cpu().bool()).float()),
         'train/step': e
     })
 
@@ -175,13 +175,13 @@ points = []
 classes = []
 f.eval()
 for e in range(10):
-    # x, y = uniform_signed_sampling(mesh, n_points=2048)
-    # x, y = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
+    x, y = uniform_signed_sampling(mesh, n_points=2048)
+    x, y = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
 
     out = f(x)
     loss = criterion(out.squeeze(), y)
 
-    pred = activation(out) > 0.5
+    pred = activation(out) > 0.8
 
     wandb.log({
         'valid/loss': loss.detach().cpu(),
@@ -198,13 +198,14 @@ for e in range(10):
                 colors.append(np.array([1, 0, 0]))
                 classes.append(0)
             points.append(point)
-        else:
-            colors.append(np.array([1, 0, 0]))
-            classes.append(2)
-            points.append(point)
+        # else:
+        #     colors.append(np.array([1, 0, 0]))
+        #     classes.append(2)
+        #     points.append(point)
 
 points, colors = np.stack(points), np.stack(colors)
 points, colors = Vector3dVector(points), Vector3dVector(colors)
+
 
 pc = PointCloud()
 pc.points = points
