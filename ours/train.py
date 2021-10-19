@@ -146,7 +146,7 @@ def main(test=False):
 
                 implicit_function_input = np.concatenate((x, y), axis=1)
                 implicit_function_output = np.concatenate((x, pred), axis=1)
-                implicit_function_output_just_true = x[x[:, 3] == 1.]
+                implicit_function_output_just_true = implicit_function_input[implicit_function_input[:, 3] == 1.]
 
                 logger.log_point_clouds({"complete": complete,
                                          "partial": partial,

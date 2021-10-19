@@ -4,8 +4,7 @@ import numpy as np
 import torch
 import torch.utils.data as data
 import open3d as o3d
-from open3d.cpu.pybind.visualization import draw_geometries
-
+from configs.local_config import TrainConfig
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
@@ -58,7 +57,7 @@ class ShapeNet(data.Dataset):
         complete_path = str(dir_path / 'models/model_normalized.obj')
 
         if self.overfit_mode:
-            complete_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+            complete_path = TrainConfig.overfit_sample
 
         tm = o3d.io.read_triangle_mesh(complete_path, False)
         complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
@@ -97,7 +96,7 @@ class ShapeNet(data.Dataset):
 
         if self.mode in ['valid', 'test']:
             if self.overfit_mode:
-                mesh_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+                mesh_path = TrainConfig.overfit_sample
             else:
                 mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
             return label, partial_pcd, mesh_path,

@@ -73,3 +73,4 @@ class TrainConfig:
     load_ckpt = None
     save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H:%M')}.ptc"
     overfit_mode = True
+    overfit_sample = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
