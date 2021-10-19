@@ -69,7 +69,7 @@ class BackBone(nn.Module):
                 generator(global_size, config.hidden_dim)])])
 
         # Generate weights, biases and scales of the hidden layers of the implicit function
-        for _ in range(2):
+        for _ in range(config.depth):
             self.output.append(nn.ModuleList([
                     generator(global_size, config.hidden_dim * config.hidden_dim),
                     generator(global_size, config.hidden_dim),
@@ -119,7 +119,7 @@ class ImplicitFunction(nn.Module):
         super().__init__()
         self.params = params
         self.relu = nn.LeakyReLU(0.2)
-        self.dropout = nn.Dropout(0.5)
+        # self.dropout = nn.Dropout(0.5)
         self.hidden_dim = config.hidden_dim
 
     def set_params(self, params):
@@ -140,7 +140,7 @@ class ImplicitFunction(nn.Module):
         biases = biases.unsqueeze(1)
 
         x = torch.bmm(x, weights) * scales + biases
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = self.relu(x)
 
         for layer in self.params[1:-1]:
@@ -151,7 +151,7 @@ class ImplicitFunction(nn.Module):
             biases = biases.unsqueeze(1)
 
             x = torch.bmm(x, weights) * scales + biases
-            x = self.dropout(x)
+            # x = self.dropout(x)
             x = self.relu(x)
 
         weights, scales, biases = self.params[-1]

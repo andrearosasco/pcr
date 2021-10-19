@@ -1,10 +1,7 @@
 from utils.logger import Logger
-logger = Logger(active=False)
-
 import os
 import random
 import time
-from datetime import datetime
 from pathlib import Path
 import numpy as np
 from torch import nn
@@ -17,10 +14,11 @@ from configs.local_config import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
 from utils.misc import create_3d_grid, check_mesh_contains
+import open3d as o3d
 
 
 def main(test=False):
-
+    logger = Logger(active=True)
     open("bad_files.txt", "w").close()  # Erase previous bad files
     print("Batch size: ", TrainConfig.mb_size)
     print("BackBone input dimension: ", DataConfig.partial_points)
@@ -51,10 +49,10 @@ def main(test=False):
     model.train()
 
     # Loss
-    loss_function = TrainConfig.loss(reduction="none")
+    loss_function = TrainConfig.loss(reduction=TrainConfig.loss_reduction)
 
     # Optimizer
-    optimizer = TrainConfig.optimizer(model.parameters(), lr=1e-4)
+    optimizer = TrainConfig.optimizer(model.parameters(), lr=TrainConfig.lr)
 
     # WANDB
     logger.log_model(model)
@@ -69,14 +67,11 @@ def main(test=False):
                               pin_memory=True,
                               generator=g)
 
-    print("Loaded ", len(train_loader), " train instances")
-
     valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid"),
                               batch_size=TrainConfig.mb_size,
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
                               pin_memory=True)
-    print("Loaded ", len(valid_loader), " validation instances")
 
     losses = []
     accuracies = []
@@ -93,10 +88,6 @@ def main(test=False):
         for idx, (label, partial, data, imp_x, imp_y, padding_length) in enumerate(
                 tqdm(train_loader, position=0, leave=True, desc="Epoch " + str(e))):
 
-            if idx > 0:
-                print(f'Data = {time.time() - start_data}')  # TODO Remove
-
-            start_one_hot = time.time()  # TODO Remove
             padding_lengths.append(padding_length.float().mean().item())
             complete = data.to(TrainConfig().device)
             partial = partial.to(TrainConfig().device)
@@ -106,12 +97,10 @@ def main(test=False):
                 object_id = torch.zeros((x.shape[0], DataConfig.n_classes), dtype=torch.float).to(x.device)
                 object_id[torch.arange(0, x.shape[0]), label] = 1.
 
-            print(f'One hot = {time.time() - start_one_hot}')  # TODO Remove
-            start_train = time.time() # TODO Remove
             out = model(partial, x, object_id)
             out = out.squeeze()
 
-            loss_value = loss_function(out, y).sum(dim=1).mean()
+            loss_value = loss_function(out, y).sum(dim=-1).mean()  # sum and mean with one value doesn't change anything
 
             optimizer.zero_grad()
             loss_value.backward()
@@ -119,9 +108,7 @@ def main(test=False):
                 clip_grad_value_(model.parameters(), TrainConfig.clip_value)
 
             optimizer.step()
-            print(f'Model = {time.time() - start_train}') # TODO Remove
             # Logs
-            start_log = time.time()  # TODO Remove
             x = x.detach().cpu().numpy()
             y = y.detach().cpu().numpy()[..., None]
             out = out.detach().cpu().numpy()[..., None]
@@ -151,14 +138,13 @@ def main(test=False):
 
                 implicit_function_input = np.concatenate((x, y), axis=1)
                 implicit_function_output = np.concatenate((x, pred), axis=1)
+                implicit_function_output_just_true = x[x[:, 3] == 1.]
 
                 logger.log_point_clouds({"complete": complete,
                                          "partial": partial,
                                          "implicit_function_input": implicit_function_input,
-                                         "implicit_function_output": implicit_function_output})
-            print(f'Logging = {time.time() - start_log}')  # TODO Remove
-
-            start_data = time.time()  # TODO Remove
+                                         "implicit_function_output": implicit_function_output,
+                                         "implicit_function_output_just_true": implicit_function_output_just_true})
             if test:
                 break
         ########
@@ -183,13 +169,12 @@ def main(test=False):
 
                 y = check_mesh_contains(mesh, x)  # TODO PARALLELIZE IT
                 y = torch.FloatTensor(y).to(out.device)
-                loss = loss_function(out, y).sum(dim=1).mean()
+                loss = loss_function(out, y).sum(dim=-1).mean()
                 val_losses.append(loss.item())
 
                 pred = copy.deepcopy(out) > 0.5
                 accuracy = (pred == y).sum().item() / torch.numel(pred)  # TODO numpy
                 val_accuracies.append(accuracy)
-
                 if test:
                     break
 
@@ -198,6 +183,7 @@ def main(test=False):
                             "validation/accuracy": val_acc})
 
         # Save best model
+        Path("checkpoint").mkdir(exist_ok=True)
         if TrainConfig.save_ckpt is not None:
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
@@ -210,11 +196,15 @@ def main(test=False):
         reconstruction_kept = reconstruction[reconstruction[..., -1] == 1.]
         original_kept = original[original[..., -1] == 1.]
 
+        total = o3d.io.read_triangle_mesh(mesh[0], False)
+        total = total.sample_points_uniformly(10000)
+        total = np.array(total.points)
+
         logger.log_point_clouds({"reconstruction": reconstruction,
                                  "original": original,
                                  "reconstruction_kept": reconstruction_kept,
                                  "original_kept": original_kept,
-                                 "validation/step": e})
+                                 "total": total})
 
         if test:
             break

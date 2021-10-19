@@ -4,6 +4,8 @@ import numpy as np
 import torch
 import torch.utils.data as data
 import open3d as o3d
+from open3d.cpu.pybind.visualization import draw_geometries
+
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
@@ -52,7 +54,12 @@ class ShapeNet(data.Dataset):
         # Extract point cloud from mesh
         dir_path = self.data_root / self.samples[idx].strip()
         label = int(self.labels_map[dir_path.parent.name])
-        tm = o3d.io.read_triangle_mesh(str(dir_path / 'models/model_normalized.obj'), False)
+        complete_path = str(dir_path / 'models/model_normalized.obj')
+
+        # TODO START REMOVE
+        complete_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+        # TODO END REMOVE
+        tm = o3d.io.read_triangle_mesh(complete_path, False)
         complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
         # Get random position of camera
@@ -64,32 +71,34 @@ class ShapeNet(data.Dataset):
         camera = [x, y, z]
 
         # Center to be in the middle
-        points = np.array(complete_pcd.points)
-        center = [max((points[:, 0] + min(points[:, 0]))/2),
-                  max((points[:, 1] + min(points[:, 1]))/2),
-                  max((points[:, 2] + min(points[:, 2]))/2)]
-        center = np.array(center)[None, ...].repeat(len(points), axis=0)
-        complete_pcd.points = Vector3dVector(points - center)
+        # points = np.array(complete_pcd.points)
+        # center = [max((points[:, 0] + min(points[:, 0]))/2),
+        #           max((points[:, 1] + min(points[:, 1]))/2),
+        #           max((points[:, 2] + min(points[:, 2]))/2)]
+        # center = np.array(center)[None, ...].repeat(len(points), axis=0)
+        # complete_pcd.points = Vector3dVector(points - center)
 
         # Remove hidden points
         _, pt_map = complete_pcd.hidden_point_removal(camera, 500)  # radius * 4
         partial_pcd = complete_pcd.select_by_index(pt_map)
-        partial_pcd = torch.FloatTensor(np.array(partial_pcd.points))
 
+        partial_pcd = torch.FloatTensor(np.array(partial_pcd.points))
         # Set partial_pcd such that it has the same size of the others
         if partial_pcd.shape[0] < self.partial_points:
             diff = self.partial_points - partial_pcd.shape[0]
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
-            # print("[ShapeNetPOV] WARNING: padding incomplete point cloud with ", diff, " points")
             padding_length = diff
 
         else:
-            # partial_pcd = fps(partial_pcd.unsqueeze(0), self.partial_points).squeeze()
-            indices = torch.multinomial(partial_pcd[:, 0].fill_(1./torch.numel(partial_pcd[:, 0])), self.partial_points)
-            partial_pcd = partial_pcd[indices]
+            perm = torch.randperm(partial_pcd.size(0))
+            idx = perm[:self.partial_points]
+            partial_pcd = partial_pcd[idx]
 
         if self.mode in ['valid', 'test']:
-            mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
+            # mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
+            # TODO START REMOVE
+            mesh_path = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+            # TODO END REMOVE
             return label, partial_pcd, mesh_path,
 
         complete_pcd = np.array(complete_pcd.points)
@@ -98,41 +107,60 @@ class ShapeNet(data.Dataset):
         imp_x, imp_y = sample_point_cloud(tm,
                                           self.noise_rate,
                                           self.percentage_sampled,
-                                          total=self.implicit_input_dimension)
+                                          total=self.implicit_input_dimension,
+                                          mode="unsigned")
         imp_x, imp_y = torch.tensor(imp_x).float(), torch.tensor(imp_y).bool().float().bool().float()  # TODO oh god..
 
         return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
 
     def __len__(self):
-        return self.n_samples
+        return int(self.n_samples / 100)  # TODO REMOVE WHAT DO YOU SAY EH??????
 
 
 if __name__ == "__main__":
-    # from ours.configs.local_config import DataConfig
-    # from tqdm import tqdm
-    # from open3d.cpu.pybind.geometry import PointCloud
-    # from open3d.cpu.pybind.utility import Vector3dVector
-    #
-    # a = DataConfig()
-    # a.dataset_path = Path("..", "..", "data", "ShapeNetCore.v2")
-    # iterator = ShapeNet(a, "microwaves")
-    # for elem in tqdm(iterator):
-    #     lab, part, comp, x, y, pad = elem
-    #     print(lab)
-    #
-    #     points = []
-    #     for _ in range(1000):
-    #         points.append(np.array([1, random.uniform(-1, 1), random.uniform(-1, 1)]))
-    #         points.append(np.array([-1, random.uniform(-1, 1), random.uniform(-1, 1)]))
-    #         points.append(np.array([random.uniform(-1, 1), 1, random.uniform(-1, 1)]))
-    #         points.append(np.array([random.uniform(-1, 1), -1, random.uniform(-1, 1)]))
-    #         points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), 1]))
-    #         points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), -1]))
-    #
-    #     points = np.stack(points)
-    #     points = np.concatenate((points, comp))
-    #     pc = PointCloud()
-    #     pc.points = Vector3dVector(points)
-    #     o3d.visualization.draw_geometries([pc])
-    #
-    #     pass
+    from ours.configs.local_config import DataConfig
+    from tqdm import tqdm
+    from open3d.cpu.pybind.geometry import PointCloud
+    from open3d.cpu.pybind.utility import Vector3dVector
+
+    a = DataConfig()
+    a.dataset_path = Path("..", "..", "data", "ShapeNetCore.v2")
+    iterator = ShapeNet(a)
+    for elem in tqdm(iterator):
+        lab, part, comp, x, y, pad = elem
+        pass
+
+        pc = PointCloud()
+        pc.points = Vector3dVector(comp)
+        o3d.visualization.draw_geometries([pc], window_name="Complete")
+        #
+        pc = PointCloud()
+        pc.points = Vector3dVector(part)
+        o3d.visualization.draw_geometries([pc], window_name="Partial")
+
+        # print(lab)
+        #
+        # points = []
+        # for _ in range(1000):
+        #     points.append(np.array([1, random.uniform(-1, 1), random.uniform(-1, 1)]))
+        #     points.append(np.array([-1, random.uniform(-1, 1), random.uniform(-1, 1)]))
+        #     points.append(np.array([random.uniform(-1, 1), 1, random.uniform(-1, 1)]))
+        #     points.append(np.array([random.uniform(-1, 1), -1, random.uniform(-1, 1)]))
+        #     points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), 1]))
+        #     points.append(np.array([random.uniform(-1, 1), random.uniform(-1, 1), -1]))
+        #
+        # points = np.stack(points)
+        # points = np.concatenate((points, comp))
+
+        # pc = PointCloud()
+        # pc.points = Vector3dVector(x)
+        # colors = []
+        # for i in y:
+        #     if i == 0.:
+        #         colors.append(np.array([1, 0, 0]))
+        #     if i == 1.:
+        #         colors.append(np.array([0, 1, 0]))
+        # colors = np.stack(colors)
+        # colors = Vector3dVector(colors)
+        # pc.colors = colors
+        # o3d.visualization.draw_geometries([pc])
