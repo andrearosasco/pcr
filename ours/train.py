@@ -42,8 +42,8 @@ def main(test=False):
 
     # Model
     model = HyperNetwork(ModelConfig())
-    if "cuda" in TrainConfig.device:
-        model = nn.DataParallel(model)
+    # if "cuda" in TrainConfig.device:
+    #     model = nn.DataParallel(model)
 
     for parameter in model.parameters():
         if len(parameter.size()) > 2:
