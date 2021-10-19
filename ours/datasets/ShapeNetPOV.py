@@ -91,8 +91,8 @@ class ShapeNet(data.Dataset):
 
         else:
             perm = torch.randperm(partial_pcd.size(0))
-            idx = perm[:self.partial_points]
-            partial_pcd = partial_pcd[idx]
+            ids = perm[:self.partial_points]
+            partial_pcd = partial_pcd[ids]
 
         if self.mode in ['valid', 'test']:
             if self.overfit_mode:

@@ -44,8 +44,8 @@ class ModelConfig:
     hidden_dim = 32
     depth = 0 if local else 2
     # Others
-    use_object_id = True
-    use_deep_weights_generator = True
+    use_object_id = False
+    use_deep_weights_generator = False
     n_classes = 55
     assert divmod(embed_dim, num_heads)[1] == 0
 
@@ -58,7 +58,7 @@ def git_hash() -> str:
 class TrainConfig:
     device = device
     visible_dev = '0'
-    lr = 1e-5 if local else 1e-4
+    lr = 1e-5 if local else 1e-5
     mb_size = 8 if local else 64
     n_epoch = 20
     clip_value = 5
@@ -71,6 +71,6 @@ class TrainConfig:
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
     load_ckpt = None
-    save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H:%M')}.ptc"
-    overfit_mode = True
+    save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H%M')}.ptc"
+    overfit_mode = False
     overfit_sample = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"

@@ -1,5 +1,4 @@
 from utils.logger import Logger
-logger = Logger(active=False)
 
 import os
 import random

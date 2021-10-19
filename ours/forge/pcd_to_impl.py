@@ -38,21 +38,21 @@ class ImplicitFunction:
 
         # Input Layer
         layers.append([
-            torch.zeros((3, 64), device=device, requires_grad=True),
+            torch.zeros((3, 512), device=device, requires_grad=True),
             # torch.zeros((1, 64), device=device, requires_grad=True),
-            torch.zeros((1, 64), device=device, requires_grad=True)
+            torch.zeros((1, 512), device=device, requires_grad=True)
         ])
 
         # Hidden Layers
         for _ in range(4):
             layers.append([
-                torch.zeros((64, 64), device=device, requires_grad=True),
+                torch.zeros((512, 512), device=device, requires_grad=True),
                 # torch.zeros((1, 64), device=device, requires_grad=True),
-                torch.zeros((1, 64), device=device, requires_grad=True)
+                torch.zeros((1, 512), device=device, requires_grad=True)
             ])
 
         layers.append([
-            torch.zeros((64, 1), device=device, requires_grad=True),
+            torch.zeros((512, 1), device=device, requires_grad=True),
             # torch.zeros((1, 1), device=device, requires_grad=True),
             torch.zeros((1, 1), device=device, requires_grad=True)
         ])
@@ -166,7 +166,7 @@ for e in range(10000):
 
     wandb.log({
         'train/loss': loss.detach().cpu(),
-        'train/accuracy': torch.mean(((activation(out).detach().cpu() > 0.8).squeeze() == y.detach().cpu().bool()).float()),
+        'train/accuracy': torch.mean(((activation(out).detach().cpu() > 0.5).squeeze() == y.detach().cpu().bool()).float()),
         'train/step': e
     })
 
@@ -181,7 +181,7 @@ for e in range(10):
     out = f(x)
     loss = criterion(out.squeeze(), y)
 
-    pred = activation(out) > 0.8
+    pred = activation(out) > 0.5
 
     wandb.log({
         'valid/loss': loss.detach().cpu(),
@@ -202,6 +202,14 @@ for e in range(10):
         #     colors.append(np.array([1, 0, 0]))
         #     classes.append(2)
         #     points.append(point)
+
+# scene = o3d.t.geometry.RaycastingScene()
+# mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+# _ = scene.add_triangles(mesh)
+# query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)
+# unsigned_distance = scene.compute_distance(query_points)
+
+
 
 points, colors = np.stack(points), np.stack(colors)
 points, colors = Vector3dVector(points), Vector3dVector(colors)
