@@ -114,7 +114,7 @@ class ShapeNet(data.Dataset):
         return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
 
     def __len__(self):
-        return int(self.n_samples / 100 if self.overfit_mode else 1)
+        return int(self.n_samples / (100 if self.overfit_mode else 1))
 
 
 if __name__ == "__main__":
