@@ -1,10 +1,6 @@
 from utils.logger import Logger
-logger = Logger(active=False)
-
 import os
 import random
-import time
-from datetime import datetime
 from pathlib import Path
 import numpy as np
 from torch import nn
@@ -106,7 +102,7 @@ def main(test=False):
                 object_id[torch.arange(0, x.shape[0]), label] = 1.
 
             out = model(partial, x, object_id)
-            out = out.squeeze()
+            out = out.squeeze(axis=-1)  # Without axis it does not work with just one batch
 
             loss_value = loss_function(out, y).sum(dim=-1).mean()  # sum and mean with one value doesn't change anything
 
@@ -146,7 +142,7 @@ def main(test=False):
 
                 implicit_function_input = np.concatenate((x, y), axis=1)
                 implicit_function_output = np.concatenate((x, pred), axis=1)
-                implicit_function_output_just_true = implicit_function_input[implicit_function_input[:, 3] == 1.]
+                implicit_function_output_just_true = implicit_function_output[implicit_function_output[:, 3] == 1.]
 
                 logger.log_point_clouds({"complete": complete,
                                          "partial": partial,
@@ -195,7 +191,8 @@ def main(test=False):
         if TrainConfig.save_ckpt is not None:
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                torch.save(model.state_dict(), Path("checkpoint") / TrainConfig.save_ckpt)
+                full_save_path = Path("checkpoint") / TrainConfig.save_ckpt
+                torch.save(model.state_dict(), full_save_path)
                 print("New best checkpoint saved :D ", val_acc)
 
         reconstruction = torch.cat((x[0], pred[0]), dim=-1).detach().cpu().numpy()

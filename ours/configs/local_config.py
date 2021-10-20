@@ -32,7 +32,7 @@ class ModelConfig:
     # Transformer
     n_channels = 3
     embed_dim = 256 if local else 384
-    encoder_depth = 2 if local else 6
+    encoder_depth = 4 if local else 6
     mlp_ratio = 2.
     qkv_bias = False
     num_heads = 4 if local else 6
@@ -42,10 +42,10 @@ class ModelConfig:
     out_size = 1024
     # Implicit Function
     hidden_dim = 32
-    depth = 0 if local else 2
+    depth = 4 if local else 2
     # Others
-    use_object_id = True
-    use_deep_weights_generator = True
+    use_object_id = False
+    use_deep_weights_generator = False
     n_classes = 55
     assert divmod(embed_dim, num_heads)[1] == 0
 
@@ -71,6 +71,7 @@ class TrainConfig:
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
     load_ckpt = None
-    save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H:%M')}.ptc"
+    save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H-%M')}"
     overfit_mode = True
-    overfit_sample = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+    # overfit_sample = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+    overfit_sample = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02691156/1a9b552befd6306cc8f2d5fe7449af61/models/model_normalized.obj"
