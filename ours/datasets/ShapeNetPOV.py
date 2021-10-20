@@ -91,8 +91,8 @@ class ShapeNet(data.Dataset):
 
         else:
             perm = torch.randperm(partial_pcd.size(0))
-            idx = perm[:self.partial_points]
-            partial_pcd = partial_pcd[idx]
+            ids = perm[:self.partial_points]
+            partial_pcd = partial_pcd[ids]
 
         if self.mode in ['valid', 'test']:
             if self.overfit_mode:
@@ -114,7 +114,7 @@ class ShapeNet(data.Dataset):
         return label, partial_pcd, complete_pcd, imp_x, imp_y, padding_length
 
     def __len__(self):
-        return int(self.n_samples / 100 if self.overfit_mode else 1)
+        return int(self.n_samples / (100 if self.overfit_mode else 1))
 
 
 if __name__ == "__main__":

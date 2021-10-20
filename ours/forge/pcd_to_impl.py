@@ -38,21 +38,21 @@ class ImplicitFunction:
 
         # Input Layer
         layers.append([
-            torch.zeros((3, 64), device=device, requires_grad=True),
+            torch.zeros((3, 512), device=device, requires_grad=True),
             # torch.zeros((1, 64), device=device, requires_grad=True),
-            torch.zeros((1, 64), device=device, requires_grad=True)
+            torch.zeros((1, 512), device=device, requires_grad=True)
         ])
 
         # Hidden Layers
         for _ in range(4):
             layers.append([
-                torch.zeros((64, 64), device=device, requires_grad=True),
+                torch.zeros((512, 512), device=device, requires_grad=True),
                 # torch.zeros((1, 64), device=device, requires_grad=True),
-                torch.zeros((1, 64), device=device, requires_grad=True)
+                torch.zeros((1, 512), device=device, requires_grad=True)
             ])
 
         layers.append([
-            torch.zeros((64, 1), device=device, requires_grad=True),
+            torch.zeros((512, 1), device=device, requires_grad=True),
             # torch.zeros((1, 1), device=device, requires_grad=True),
             torch.zeros((1, 1), device=device, requires_grad=True)
         ])
@@ -114,7 +114,7 @@ def uniform_signed_sampling(mesh, n_points=2048):
     n_noise = int(n_points * 0.4)
     n_mesh = int(n_points * 0.5)
 
-    points_uniform = np.random.rand(n_uniform, 3) - 0.5
+    points_uniform = np.random.rand(n_uniform, 3) * 2 - 1
     points_noisy = np.array(mesh.sample_points_uniformly(n_noise).points) + (0.1 * np.random.randn(n_noise, 3))
     points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points)
 
@@ -146,12 +146,12 @@ def uniform_signed_sampling(mesh, n_points=2048):
 #     return points, labels.numpy()
 
 # Encode
-x, y = uniform_signed_sampling(mesh, n_points=8192)
-x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
+# x, y = uniform_signed_sampling(mesh, n_points=8192)
+# x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
 
 for e in range(10000):
-    # x, y = uniform_signed_sampling(mesh, n_points=8192)
-    # x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
+    x, y = uniform_signed_sampling(mesh, n_points=8192)
+    x, y, = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
 
     out = f(x)
     loss = criterion(out.squeeze(), y)
@@ -175,8 +175,8 @@ points = []
 classes = []
 f.eval()
 for e in range(10):
-    # x, y = uniform_signed_sampling(mesh, n_points=2048)
-    # x, y = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
+    x, y = uniform_signed_sampling(mesh, n_points=2048)
+    x, y = torch.tensor(x, device='cuda', dtype=torch.float32), torch.tensor(y, device='cuda', dtype=torch.float32)
 
     out = f(x)
     loss = criterion(out.squeeze(), y)
@@ -198,13 +198,22 @@ for e in range(10):
                 colors.append(np.array([1, 0, 0]))
                 classes.append(0)
             points.append(point)
-        else:
-            colors.append(np.array([1, 0, 0]))
-            classes.append(2)
-            points.append(point)
+        # else:
+        #     colors.append(np.array([1, 0, 0]))
+        #     classes.append(2)
+        #     points.append(point)
+
+# scene = o3d.t.geometry.RaycastingScene()
+# mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+# _ = scene.add_triangles(mesh)
+# query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)
+# unsigned_distance = scene.compute_distance(query_points)
+
+
 
 points, colors = np.stack(points), np.stack(colors)
 points, colors = Vector3dVector(points), Vector3dVector(colors)
+
 
 pc = PointCloud()
 pc.points = points

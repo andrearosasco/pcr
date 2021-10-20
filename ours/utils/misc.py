@@ -260,7 +260,7 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192,
     n_points_uniform = int(total * percentage_sampled)
     n_points_surface = total - n_points_uniform
 
-    points_uniform = np.random.rand(n_points_uniform, 3) - 0.5
+    points_uniform = np.random.rand(n_points_uniform, 3) * 2 - 1
 
     points_surface = np.array(mesh.sample_points_uniformly(n_points_surface).points)
 

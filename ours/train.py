@@ -39,12 +39,12 @@ def main(test=False):
 
     # Model
     model = HyperNetwork(ModelConfig())
-    if "cuda" in TrainConfig.device:
-        model = nn.DataParallel(model)
-
-    for parameter in model.parameters():
-        if len(parameter.size()) > 2:
-            torch.nn.init.uniform_(parameter)
+    # if "cuda" in TrainConfig.device:
+    #     model = nn.DataParallel(model)
+    #
+    # for parameter in model.parameters():
+    #     if len(parameter.size()) > 2:
+    #         torch.nn.init.uniform_(parameter)
 
     model.to(TrainConfig.device)
     model.train()
@@ -191,8 +191,7 @@ def main(test=False):
         if TrainConfig.save_ckpt is not None:
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                full_save_path = Path("checkpoint") / TrainConfig.save_ckpt
-                torch.save(model.state_dict(), full_save_path)
+                torch.save(model.state_dict(), Path("checkpoint") / TrainConfig.save_ckpt)
                 print("New best checkpoint saved :D ", val_acc)
 
         reconstruction = torch.cat((x[0], pred[0]), dim=-1).detach().cpu().numpy()
