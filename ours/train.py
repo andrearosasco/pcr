@@ -44,10 +44,10 @@ def main(test=False):
     model = HyperNetwork(ModelConfig())
     # if "cuda" in TrainConfig.device:
     #     model = nn.DataParallel(model)
-
-    for parameter in model.parameters():
-        if len(parameter.size()) > 2:
-            torch.nn.init.uniform_(parameter)
+    #
+    # for parameter in model.parameters():
+    #     if len(parameter.size()) > 2:
+    #         torch.nn.init.uniform_(parameter)
 
     model.to(TrainConfig.device)
     model.train()

@@ -114,7 +114,7 @@ def uniform_signed_sampling(mesh, n_points=2048):
     n_noise = int(n_points * 0.4)
     n_mesh = int(n_points * 0.5)
 
-    points_uniform = np.random.rand(n_uniform, 3) - 0.5
+    points_uniform = np.random.rand(n_uniform, 3) * 2 - 1
     points_noisy = np.array(mesh.sample_points_uniformly(n_noise).points) + (0.1 * np.random.randn(n_noise, 3))
     points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points)
 
