@@ -58,7 +58,7 @@ def git_hash() -> str:
 class TrainConfig:
     device = device
     visible_dev = '0'
-    lr = 1e-5 if local else 1e-5
+    lr = 1e-5 if local else 1e-4
     mb_size = 8 if local else 64
     n_epoch = 20
     clip_value = 5
