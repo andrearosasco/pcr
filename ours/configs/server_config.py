@@ -2,23 +2,20 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
+from types import SimpleNamespace
+
 import torch
-import platform
 
-
-# PARAMETERS ###########################################################################################################
-
-device = "cuda"
-
+device = 'cuda'
 
 @dataclass
 class DataConfig:
     dataset_path = "../data/ShapeNetCore.v2"
     partial_points = 2048
     multiplier_complete_sampling = 3
-    noise_rate = 0.02
-    percentage_sampled = 0.1
-    mode = 'easy'  # train, valid, test
+    noise_rate = 0.02  # amount of noise added to the point sampled on the mesh
+    percentage_sampled = 0.1  # number of uniformly sampled points
+    mode = 'easy'  # values: train, valid, test
     n_classes = 55
     implicit_input_dimension = 8192
 
@@ -30,18 +27,18 @@ class ModelConfig:
     device = device
     # Transformer
     n_channels = 3
-    embed_dim = 256
-    encoder_depth = 4
+    embed_dim = 384
+    encoder_depth = 6
     mlp_ratio = 2.
     qkv_bias = False
-    num_heads = 4
+    num_heads = 6
     attn_drop_rate = 0.
     drop_rate = 0.
     qk_scale = None
     out_size = 1024
     # Implicit Function
     hidden_dim = 32
-    depth = 4
+    depth = 2
     # Others
     use_object_id = False
     use_deep_weights_generator = False
@@ -57,14 +54,14 @@ def git_hash() -> str:
 class TrainConfig:
     device = device
     visible_dev = '0'
-    lr = 1e-5
-    mb_size = 1
+    lr = 1e-4
+    mb_size = 64
     n_epoch = 20
     clip_value = 5 # 0.5?
-    log_metrics_every = 10
+    log_metrics_every = 100
     log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
-    num_workers = 0
+    num_workers = 20
     git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
@@ -75,3 +72,14 @@ class TrainConfig:
     # overfit_sample = "../data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
     # overfit_sample = "../pcr/data/ShapeNetCore.v2/02691156/1a9b552befd6306cc8f2d5fe7449af61/models/model_normalized.obj"
     grid_res_step = 0.02
+
+
+# NewConfig = SimpleNamespace(
+#     visible_dev='0',
+#     implicit=SimpleNamespace(
+#         hidden_dim=32,
+#         depth=2
+#     )
+# )
+#
+# print(NewConfig.implicit.hidden_dim)
