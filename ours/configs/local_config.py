@@ -19,7 +19,7 @@ class DataConfig:
     multiplier_complete_sampling = 3
     noise_rate = 0.02
     percentage_sampled = 0.1
-    mode = 'train'  # train, valid, test
+    mode = 'easy'  # train, valid, test
     n_classes = 55
     implicit_input_dimension = 8192
 
@@ -61,18 +61,18 @@ class TrainConfig:
     lr = 1e-5 if local else 1e-4
     mb_size = 1 if local else 64
     n_epoch = 20
-    clip_value = 5
+    clip_value = 5 # 0.5?
     log_metrics_every = 10 if local else 100
     log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
-    num_workers = 4 if local else 20
+    num_workers = 0 if local else 20
     git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
     load_ckpt = None
     save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H-%M')}"
-    overfit_mode = True
-    # overfit_sample = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
-    overfit_sample = "C:/Users/sberti/PycharmProjects/pcr/data/ShapeNetCore.v2/02691156/1a9b552befd6306cc8f2d5fe7449af61/models/model_normalized.obj"
+    overfit_mode = False
+    # overfit_sample = "../data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
+    overfit_sample = "../pcr/data/ShapeNetCore.v2/02691156/1a9b552befd6306cc8f2d5fe7449af61/models/model_normalized.obj"
     grid_res_step = 0.02

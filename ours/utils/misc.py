@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
+
+from configs.local_config import TrainConfig
 from utils.fps import fp_sampling
 from math import ceil
 import open3d as o3d

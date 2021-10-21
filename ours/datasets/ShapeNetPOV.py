@@ -54,12 +54,12 @@ class ShapeNet(data.Dataset):
         # Extract point cloud from mesh
         dir_path = self.data_root / self.samples[idx].strip()
         label = int(self.labels_map[dir_path.parent.name])
-        complete_path = str(dir_path / 'models/model_normalized.obj')
+        complete_path = dir_path / 'models/model_normalized.obj'
 
         if self.overfit_mode:
-            complete_path = TrainConfig.overfit_sample
+            complete_path = Path(TrainConfig.overfit_sample)
 
-        tm = o3d.io.read_triangle_mesh(complete_path, False)
+        tm = o3d.io.read_triangle_mesh(str(complete_path), False)
         complete_pcd = tm.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
 
         # Get random position of camera
