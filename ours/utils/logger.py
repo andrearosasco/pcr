@@ -51,3 +51,8 @@ class Logger(metaclass=Singleton):
             for name in point_clouds.keys():
                 pcs[name] = wandb.Object3D({"type": "lidar/beta", "points": point_clouds[name]})
             wandb.log(pcs)
+
+    def log_config_file(self):
+        if self.active:
+            pass
+            # wandb.log({"ours/configs/local_config.py"})

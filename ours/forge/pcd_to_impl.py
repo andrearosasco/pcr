@@ -109,7 +109,7 @@ criterion = torch.nn.BCEWithLogitsLoss(reduction='mean')
 activation = nn.Sigmoid()
 # Mesh Sampling
 
-def uniform_signed_sampling(mesh, n_points=2048):
+def andreas_sampling(mesh, n_points=2048):
     n_uniform = int(n_points * 0.1)
     n_noise = int(n_points * 0.4)
     n_mesh = int(n_points * 0.5)

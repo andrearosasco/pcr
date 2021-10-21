@@ -396,6 +396,21 @@ def check_mesh_contains(meshes, queries, max_dist=0.01):
     return occupancies.astype(float)
 
 
+def andreas_sampling(mesh, n_points=2048):
+    n_uniform = int(n_points * 0.1)
+    n_noise = int(n_points * 0.4)
+    n_mesh = int(n_points * 0.5)
+
+    points_uniform = np.random.rand(n_uniform, 3) * 2 - 1
+    points_noisy = np.array(mesh.sample_points_uniformly(n_noise).points) + (0.1 * np.random.randn(n_noise, 3))
+    points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points)
+
+    points = np.concatenate([points_uniform, points_noisy, points_surface], axis=0)
+
+    labels = [False] * (n_uniform + n_noise) + [True] * n_mesh
+    return points, labels
+
+
 # if __name__ == "__main__":
 #     grid = create_3d_grid()
 #     pc = PointCloud()

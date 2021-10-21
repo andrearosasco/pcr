@@ -17,7 +17,7 @@ import open3d as o3d
 
 
 def main(test=False):
-    logger = Logger(active=True)
+    logger = Logger(active=False)
     open("bad_files.txt", "w").close()  # Erase previous bad files
     print("Batch size: ", TrainConfig.mb_size)
     print("BackBone input dimension: ", DataConfig.partial_points)
@@ -58,6 +58,7 @@ def main(test=False):
     # WANDB
     logger.log_model(model)
     logger.log_config()
+    logger.log_config_file()
 
     # Dataset
     train_loader = DataLoader(ShapeNet(DataConfig, mode="train", overfit_mode=TrainConfig.overfit_mode),
@@ -154,7 +155,7 @@ def main(test=False):
         ########
         # EVAL #
         ########
-        x = create_3d_grid(bs=TrainConfig().mb_size).to(TrainConfig().device)
+        x = create_3d_grid(bs=TrainConfig.mb_size, step=TrainConfig.grid_res_step).to(TrainConfig().device)
         pred = None
         val_losses = []
         val_accuracies = []

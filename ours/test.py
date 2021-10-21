@@ -17,8 +17,9 @@ import time
 if __name__ == "__main__":
 
     model = HyperNetwork(ModelConfig())
-    model = nn.DataParallel(model)
-    model.load_state_dict(torch.load("checkpoint/20-10-21_08-44"))
+    # model = nn.DataParallel(model)
+    model.load_state_dict(torch.load("checkpoint/server2.ptc"))
+    model.cuda()
     model.eval()
 
     # Reproducibility
@@ -44,7 +45,7 @@ if __name__ == "__main__":
 
     with torch.no_grad():
         for label, partial, data, imp_x, imp_y, padding_length in train_loader:
-            partial = partial[:1]  # take just first batch
+            partial = partial[:1].to(grid.device)  # take just first batch
             print("Giving to model ", partial.size(1), " points")
             start = time.time()
             results = model(partial, grid)
@@ -58,7 +59,7 @@ if __name__ == "__main__":
 
     results = results[0]
     grid = grid[0]
-    results = results > 0.999
+    results = results > 0.5
     results = torch.cat((grid, results), dim=-1)
     results = results[results[..., -1] == 1.]
     results = results[:, :3]
