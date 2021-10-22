@@ -71,7 +71,7 @@ class SoftFlatShader(nn.Module):
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="train", overfit_mode=False):
+    def __init__(self, config, mode="train", diff="easy", overfit_mode=False):
         self.mode = mode
         self.overfit_mode = overfit_mode
         #  Backbone Input
@@ -85,7 +85,7 @@ class ShapeNet(data.Dataset):
         self.tollerance = config.tollerance
         self.implicit_input_dimension = config.implicit_input_dimension
 
-        with (self.data_root / f'{self.mode}.txt').open('r') as file:
+        with (self.data_root / diff / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
 
         self.samples = lines

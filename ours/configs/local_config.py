@@ -21,7 +21,7 @@ class DataConfig:
     percentage_sampled = 0.1
     tollerance = 0.0001
     mode = 'train'  # train, valid, test
-    mode = 'easy'  # train, valid, test
+    diff = 'easy'  # train, valid, test
     n_classes = 55
     implicit_input_dimension = 8192
 
