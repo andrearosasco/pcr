@@ -5,12 +5,13 @@ import tqdm
 
 
 class DatasetGenerator:
-    def __init__(self, dataset_path, parts, oversampling=True):
+    def __init__(self, dataset_path, parts, oversampling=True, classes=None):
         self.data_path = Path(dataset_path)
         self.train_size = parts[0]
         self.val_size = parts[1]
         self.test_size = parts[2]
         self.oversampling = oversampling
+        self.classes = classes
 
         assert round(self.val_size + self.train_size + self.test_size, 5) == 1.
 
@@ -20,16 +21,28 @@ class DatasetGenerator:
         with more elements and repeat the class with less samples such that each class contains max_length samples
         :return:
         """
-        classes = list(filter(lambda x: x.is_dir(), self.data_path.glob('*')))
+        all_classes = list(filter(lambda x: x.is_dir(), self.data_path.glob('*')))
 
-        max_length = max([len(os.listdir(cls)) for cls in classes])
+        with (self.data_path / 'classes.txt').open('r') as f:
+            ids_names = {l.split()[1]: l.split()[2] for l in f.readlines()}
+        names_ids = {v: k for k, v in ids_names.items()}
+
+        lengths = [len(os.listdir(self.data_path / names_ids[cls])) for cls in self.classes]
+        max_length = max(lengths)
         max_train = int(max_length * self.train_size)
 
         train = []
         valid = []
         test = []
 
-        for cls in tqdm.tqdm(classes):
+        for cls in tqdm.tqdm(all_classes):
+            try:
+                if self.classes is not None and ids_names[cls.name] not in self.classes:
+                    continue
+            except KeyError:
+                print(f'Directory {cls.name} is not a recognized ShapeNet directory and it will be ignored')
+                continue
+
             # Get samples of that class and divide it into train val and test
             files = list(cls.glob('*'))
 
@@ -50,7 +63,7 @@ class DatasetGenerator:
             test.extend(test_local)
 
         if self.oversampling:
-            assert len(train) == max_train * len(classes)
+            assert len(train) == max_train * len(self.classes)
 
         with (self.data_path / "train.txt").open('w') as f:
             lines = [f'{elem.parent.name}/{elem.name}' for elem in train]
@@ -67,5 +80,6 @@ class DatasetGenerator:
 
 if __name__ == "__main__":
     from configs.local_config import DataConfig
-    iterator = DatasetGenerator(DataConfig.dataset_path, [0.7, 0.1, 0.2], oversampling=True)
+    classes = ['airplane', 'cabinet', 'car', 'chair', 'lamp', 'sofa', 'table', 'vessel', 'microwave']
+    iterator = DatasetGenerator(DataConfig.dataset_path, [0.7, 0.1, 0.2], oversampling=True, classes=classes)
     iterator.generate()

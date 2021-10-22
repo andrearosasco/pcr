@@ -128,7 +128,7 @@ def andreas_sampling(mesh, n_points=2048):
 #     n_uniform = int(n_points * 0.1)
 #     n_mesh = int(n_points * 0.9)
 #
-#     points_uniform = np.random.rand(n_uniform, 3) - 0.5
+#     points_uniform = np.random.rand(n_uniform, 3) * 2 - 1
 #     points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points) + (0.1 * np.random.randn(n_mesh, 3))
 #
 #     points = np.concatenate([points_uniform, points_surface], axis=0)
@@ -170,9 +170,8 @@ for e in range(10000):
         'train/step': e
     })
 
-colors = []
-points = []
-classes = []
+
+x_l, y_l, o_l = [], [], []
 f.eval()
 for e in range(10):
     x, y = uniform_signed_sampling(mesh, n_points=2048)
@@ -181,28 +180,37 @@ for e in range(10):
     out = f(x)
     loss = criterion(out.squeeze(), y)
 
-    pred = activation(out) > 0.5
+    x_l.extend(x.detach().cpu().tolist())
+    y_l.extend(y.detach().cpu().tolist())
+    o_l.extend(out.detach().cpu().tolist())
 
-    wandb.log({
-        'valid/loss': loss.detach().cpu(),
-        'valid/accuracy': torch.mean(((activation(out).detach().cpu() > 0.5).squeeze() == y.detach().cpu().bool()).float()),
-        'valid/step': e
-    })
+threshold = [0.5, 0.8, 0.9, 0.95, 0.99]
+pcs = {}
+for t in threshold:
 
-    for point, pred, label in zip(x.cpu().numpy(), pred.cpu().numpy(), y):
+    points, classes = [], []
+    for point, out, label in zip(x_l, o_l, y_l):
+        pred = (activation(out) > t).detach().cpu()
+
         if pred == 1:
             if label == 1:
-                colors.append(np.array([0, 1, 0]))
                 classes.append(1)
             else:
-                colors.append(np.array([1, 0, 0]))
                 classes.append(0)
             points.append(point)
+
+    pcs[f'thresh{t}'] = np.concatenate([np.array(points), np.expand_dims(np.array(classes), axis=1)], 1)
         # else:
         #     colors.append(np.array([1, 0, 0]))
         #     classes.append(2)
         #     points.append(point)
 
+    wandb.log({
+        'valid/loss': loss.detach().cpu(),
+        'valid/accuracy': torch.mean(
+            ((activation(out).detach().cpu() > 0.5).squeeze() == y.detach().cpu().bool()).float()),
+        'valid/step': e
+    })
 # scene = o3d.t.geometry.RaycastingScene()
 # mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
 # _ = scene.add_triangles(mesh)
@@ -210,8 +218,7 @@ for e in range(10):
 # unsigned_distance = scene.compute_distance(query_points)
 
 
-
-points, colors = np.stack(points), np.stack(colors)
+points, colors = np.stack(points)
 points, colors = Vector3dVector(points), Vector3dVector(colors)
 
 

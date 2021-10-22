@@ -10,6 +10,8 @@ from collections import abc
 import tqdm
 from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.loss.point_mesh_distance import point_mesh_face_distance, point_face_distance
+
+from configs.local_config import TrainConfig
 from utils.fps import fp_sampling
 from math import ceil
 import open3d as o3d

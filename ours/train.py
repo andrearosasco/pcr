@@ -1,9 +1,11 @@
+from ignite.metrics import Recall, Precision, MetricsLambda, Accuracy, Loss
+
 from utils.logger import Logger
 import os
 import random
 from pathlib import Path
 import numpy as np
-from torch import nn
+import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
 from datasets.ShapeNetPOV import ShapeNet
@@ -14,10 +16,11 @@ from tqdm import tqdm
 import copy
 from utils.misc import create_3d_grid, check_mesh_contains
 import open3d as o3d
+import wandb
 
 
 def main(test=False):
-    logger = Logger(active=False)
+    logger = Logger(active=True)
     open("bad_files.txt", "w").close()  # Erase previous bad files
     print("Batch size: ", TrainConfig.mb_size)
     print("BackBone input dimension: ", DataConfig.partial_points)
@@ -61,9 +64,9 @@ def main(test=False):
     logger.log_config_file()
 
     # Dataset
-    train_loader = DataLoader(ShapeNet(DataConfig, mode="train", overfit_mode=TrainConfig.overfit_mode),
+    train_loader = DataLoader(ShapeNet(DataConfig, mode=f"{DataConfig.mode}/train", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
-                              shuffle=True,
+                              shuffle=False,
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
                               pin_memory=True,
@@ -71,7 +74,7 @@ def main(test=False):
 
     print("Loaded ", len(train_loader), " train instances")
 
-    valid_loader = DataLoader(ShapeNet(DataConfig, mode="valid", overfit_mode=TrainConfig.overfit_mode),
+    valid_loader = DataLoader(ShapeNet(DataConfig, mode=f"{DataConfig.mode}/valid", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
@@ -82,7 +85,7 @@ def main(test=False):
     accuracies = []
     object_id = None
     padding_lengths = []
-    best_val_acc = 0
+    best_accuracy = 0
 
     for e in range(TrainConfig().n_epoch):
         #########
@@ -159,11 +162,21 @@ def main(test=False):
         pred = None
         val_losses = []
         val_accuracies = []
+
+        precision = Precision(average=False)
+        recall = Recall(average=False)
+        F1 = MetricsLambda(lambda t: torch.mean(t).item(), precision * recall * 2 / (precision + recall + 1e-20))
+        accuracy = Accuracy()
+        loss = Loss(F.binary_cross_entropy_with_logits)
+
         model.eval()
         with torch.no_grad():
             for idx, (label, partial, mesh) in enumerate(
                     tqdm(valid_loader, position=0, leave=True, desc="Validation " + str(e))):
                 partial = partial.to(TrainConfig.device)
+
+                y = check_mesh_contains(mesh, x, max_dist=0.01)  # TODO PARALLELIZE IT
+                y = torch.FloatTensor(y).to(TrainConfig.device)
 
                 # TODO we are passing 100k points (too much?)
                 if ModelConfig.use_object_id:
@@ -172,28 +185,36 @@ def main(test=False):
 
                 out = model(partial, x, object_id)
 
-                y = check_mesh_contains(mesh, x)  # TODO PARALLELIZE IT
-                y = torch.FloatTensor(y).to(out.device)
-                loss = loss_function(out, y).sum(dim=-1).mean()
-                val_losses.append(loss.item())
+                loss.update([out, y])
 
-                pred = copy.deepcopy(out) > 0.5
-                accuracy = (pred == y).sum().item() / torch.numel(pred)  # TODO numpy
-                val_accuracies.append(accuracy)
+                out = F.sigmoid(out)
+                pred = out > 0.5
+
+                precision.update([pred, y])
+                recall.update([pred, y])
+                F1.update([pred, y])
+                accuracy.update([pred, y])
+
                 if test:
                     break
 
-        val_acc = sum(val_accuracies) / len(val_accuracies)
-        logger.log_metrics({"validation/loss": sum(val_losses) / len(val_losses),
-                            "validation/accuracy": val_acc, "validation/step": e})
+        logger.log_metrics({"validation/loss": loss.compute(),
+                            "validation/accuracy": accuracy.compute(),
+                            "validation/precision": precision.compute(),
+                            "validation/recall": recall.compute(),
+                            "validation/f1": F1.compute(),
+                            "validation/step": e})
 
         # Save best model
         Path("checkpoint").mkdir(exist_ok=True)
         if TrainConfig.save_ckpt is not None:
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                torch.save(model.state_dict(), Path("checkpoint") / TrainConfig.save_ckpt)
-                print("New best checkpoint saved :D ", val_acc)
+            # if accuracy.compute() > best_accuracy:
+            #     best_accuracy = accuracy.compute()
+            filename = TrainConfig.save_ckpt
+            if wandb.run.id is not None:
+                filename = f'{wandb.run.id}_{filename}'
+            torch.save(model.state_dict(), Path("checkpoint") / filename)
+            print("New best checkpoint saved :D ", F1.compute())
 
         reconstruction = torch.cat((x[0], pred[0]), dim=-1).detach().cpu().numpy()
         original = torch.cat((x[0], y[0]), dim=-1).detach().cpu().numpy()
