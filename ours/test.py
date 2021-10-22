@@ -5,6 +5,7 @@ import open3d as o3d
 from models.HyperNetwork import HyperNetwork
 from configs.local_config import ModelConfig
 from torch import nn
+from torch.nn.functional import sigmoid
 from utils.misc import create_3d_grid
 from datasets.ShapeNetPOV import ShapeNet
 from torch.utils.data import DataLoader
@@ -59,6 +60,7 @@ if __name__ == "__main__":
 
     results = results[0]
     grid = grid[0]
+    results = sigmoid(results)
     results = results > 0.5
     results = torch.cat((grid, results), dim=-1)
     results = results[results[..., -1] == 1.]
