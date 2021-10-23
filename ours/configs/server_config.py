@@ -16,7 +16,7 @@ class DataConfig:
     noise_rate = 0.02  # amount of noise added to the point sampled on the mesh
     percentage_sampled = 0.1  # number of uniformly sampled points
     mode = 'easy'  # values: train, valid, test
-    n_classes = 55
+    n_classes = 55 # TODO re-label classes for easy dataset
     implicit_input_dimension = 8192
 
 
@@ -42,7 +42,7 @@ class ModelConfig:
     # Others
     use_object_id = False
     use_deep_weights_generator = False
-    n_classes = 55
+    n_classes = 55  # TODO re-label classes for easy dataset
     assert divmod(embed_dim, num_heads)[1] == 0
 
 
@@ -53,7 +53,7 @@ def git_hash() -> str:
 @dataclass
 class TrainConfig:
     device = device
-    visible_dev = '0'
+    visible_dev = '1'
     lr = 1e-4
     mb_size = 64
     n_epoch = 20

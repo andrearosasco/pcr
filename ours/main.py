@@ -211,29 +211,31 @@ def chamfer(samples, predictions, meshes):
         signed_distance = scene.compute_distance(query_points)
         return np.mean(signed_distance.numpy())
 
-model = HyperNetwork(ModelConfig)
+if __name__ == '__main__':
+    os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
+    model = HyperNetwork(ModelConfig)
 
-wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump')
-wandb_logger.watch(model)
+    wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump')
+    wandb_logger.watch(model)
 
 
-checkpoint_callback = ModelCheckpoint(
-    monitor='valid/f1',
-    dirpath='checkpoint',
-    filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
-    auto_insert_metric_name=False)
+    checkpoint_callback = ModelCheckpoint(
+        monitor='valid/f1',
+        dirpath='checkpoint',
+        filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
+        auto_insert_metric_name=False)
 
-trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
-                     precision=32,
-                     gpus=1,
-                     num_nodes=1,
-                     log_every_n_steps=TrainConfig.log_metrics_every,
-                     logger=[wandb_logger],
-                     gradient_clip_val=TrainConfig.clip_value,
-                     gradient_clip_algorithm='value',
-                     callbacks=[GPUStatsMonitor(),
-                                ProgressBar(),
-                                checkpoint_callback],
-                     )
+    trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
+                         precision=32,
+                         gpus=[1],
+                         num_nodes=1,
+                         log_every_n_steps=TrainConfig.log_metrics_every,
+                         logger=[wandb_logger],
+                         gradient_clip_val=TrainConfig.clip_value,
+                         gradient_clip_algorithm='value',
+                         callbacks=[GPUStatsMonitor(),
+                                    ProgressBar(),
+                                    checkpoint_callback],
+                         )
 
-trainer.fit(model)
+    trainer.fit(model)
