@@ -27,7 +27,6 @@ import pytorch_lightning as pl
 # =======================  Reproducibility =======================
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2 ** 32
-    print(worker_seed)
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
@@ -75,7 +74,7 @@ class HyperNetwork(pl.LightningModule):
     def train_dataloader(self):
         return DataLoader(self.training_set,
                           batch_size=TrainConfig.mb_size,
-                          shuffle=False,
+                          shuffle=True,
                           drop_last=True,
                           num_workers=TrainConfig.num_workers,
                           pin_memory=True,
@@ -198,6 +197,18 @@ class HyperNetwork(pl.LightningModule):
             'complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
         })
 
+def print_memory():
+    import gc
+    i = 0
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if obj.is_cuda:
+                    i += 1
+        except:
+            pass
+
+    print(i)
 
 def chamfer(samples, predictions, meshes):
     for mesh, pred in zip(meshes, predictions):
@@ -227,8 +238,7 @@ if __name__ == '__main__':
 
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
-                         gpus=[1],
-                         num_nodes=1,
+                         gpus=1,
                          log_every_n_steps=TrainConfig.log_metrics_every,
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,
