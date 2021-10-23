@@ -79,7 +79,7 @@ class DatasetGenerator:
 
 
 if __name__ == "__main__":
-    from configs.local_config import DataConfig
+    from configs import DataConfig
     classes = ['airplane', 'cabinet', 'car', 'chair', 'lamp', 'sofa', 'table', 'vessel', 'microwave']
     iterator = DatasetGenerator(DataConfig.dataset_path, [0.7, 0.1, 0.2], oversampling=True, classes=classes)
     iterator.generate()

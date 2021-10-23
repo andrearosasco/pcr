@@ -4,14 +4,14 @@ import numpy as np
 import torch
 import torch.utils.data as data
 import open3d as o3d
-from configs.local_config import TrainConfig
+from configs import TrainConfig
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from numpy import cos, sin
 from utils.misc import sample_point_cloud
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="train", overfit_mode=False):
+    def __init__(self, config, mode="hard/train", overfit_mode=False):
         self.mode = mode
         self.overfit_mode = overfit_mode
         #  Backbone Input
@@ -94,7 +94,7 @@ class ShapeNet(data.Dataset):
             ids = perm[:self.partial_points]
             partial_pcd = partial_pcd[ids]
 
-        if self.mode in ['valid', 'test']:
+        if self.mode.split('/')[1] in ['valid', 'test']:
             if self.overfit_mode:
                 mesh_path = TrainConfig.overfit_sample
             else:
@@ -118,7 +118,7 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from ours.configs.local_config import DataConfig
+    from ours.configs import DataConfig
     from tqdm import tqdm
     from open3d.cpu.pybind.geometry import PointCloud
     from open3d.cpu.pybind.utility import Vector3dVector

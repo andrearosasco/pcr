@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from datasets.ShapeNetPOV import ShapeNet
 from models.HyperNetwork import HyperNetwork
 import torch
-from configs.local_config import DataConfig, ModelConfig, TrainConfig
+from configs import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
 from utils.misc import create_3d_grid, check_mesh_contains
@@ -64,7 +64,8 @@ def main(test=False):
     logger.log_config_file()
 
     # Dataset
-    train_loader = DataLoader(ShapeNet(DataConfig, mode=f"{DataConfig.mode}/train", overfit_mode=TrainConfig.overfit_mode),
+    train_loader = DataLoader(ShapeNet(DataConfig, mode=f"{DataConfig.mode}/train",
+                                       overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
                               shuffle=False,
                               drop_last=True,
@@ -74,11 +75,13 @@ def main(test=False):
 
     print("Loaded ", len(train_loader), " train instances")
 
-    valid_loader = DataLoader(ShapeNet(DataConfig, mode=f"{DataConfig.mode}/valid", overfit_mode=TrainConfig.overfit_mode),
-                              batch_size=TrainConfig.mb_size,
-                              drop_last=True,
-                              num_workers=TrainConfig.num_workers,
-                              pin_memory=True)
+    valid_loader = DataLoader(
+        ShapeNet(DataConfig, mode=f"{DataConfig.mode}/valid",
+                 overfit_mode=TrainConfig.overfit_mode),
+        batch_size=TrainConfig.mb_size,
+        drop_last=True,
+        num_workers=TrainConfig.num_workers,
+        pin_memory=True)
     print("Loaded ", len(valid_loader), " validation instances")
 
     losses = []
@@ -158,7 +161,7 @@ def main(test=False):
         ########
         # EVAL #
         ########
-        x = create_3d_grid(bs=TrainConfig.mb_size, step=TrainConfig.grid_res_step).to(TrainConfig().device)
+        x = create_3d_grid(batch_size=TrainConfig.mb_size, step=TrainConfig.grid_res_step).to(TrainConfig().device)
         pred = None
         val_losses = []
         val_accuracies = []
