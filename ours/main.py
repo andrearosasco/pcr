@@ -92,7 +92,7 @@ class HyperNetwork(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(
             self.valid_set,
-            batch_size=1,
+            batch_size=TrainConfig.test_mb_size,
             drop_last=True,
             num_workers=TrainConfig.num_workers,
             pin_memory=True)
@@ -145,7 +145,7 @@ class HyperNetwork(pl.LightningModule):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
         self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
 
-        self.grid = create_3d_grid(batch_size=1).to(TrainConfig.device)
+        self.grid = create_3d_grid(batch_size=TrainConfig.test_mb_size).to(TrainConfig.device)
 
     def validation_step(self, batch, batch_idx):
         label, partial, mesh = batch

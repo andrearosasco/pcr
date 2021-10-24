@@ -56,6 +56,7 @@ class TrainConfig:
     visible_dev = '1'
     lr = 1e-4
     mb_size = 64 # TODO perché serve così basso adesso?
+    test_mb_size = 64
     n_epoch = 20
     clip_value = 5 # 0.5?
     log_metrics_every = 100
