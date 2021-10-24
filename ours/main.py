@@ -1,7 +1,10 @@
+import math
 import os
+import sys
+
 from configs import DataConfig, ModelConfig, TrainConfig
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
-from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint
+from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint, ProgressBarBase
 from pytorch_lightning.core.memory import ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 from torchmetrics import Accuracy, Precision, Recall, F1, AverageMeter
@@ -68,12 +71,13 @@ class HyperNetwork(pl.LightningModule):
         self.training_set = ShapeNet(DataConfig,
                                      mode=f"{DataConfig.mode}/train",
                                      overfit_mode=TrainConfig.overfit_mode)
+        print(len(self.training_set))
         self.valid_set = ShapeNet(DataConfig,
                                   mode=f"{DataConfig.mode}/valid",
                                   overfit_mode=TrainConfig.overfit_mode)
 
     def train_dataloader(self):
-        return DataLoader(self.training_set,
+        dl = DataLoader(self.training_set,
                           batch_size=TrainConfig.mb_size,
                           shuffle=True,
                           drop_last=True,
@@ -82,10 +86,13 @@ class HyperNetwork(pl.LightningModule):
                           worker_init_fn=seed_worker,
                           generator=generator)
 
+        print(len(self.training_set), '/', TrainConfig.mb_size, '=', len(dl))
+        return dl
+
     def val_dataloader(self):
         return DataLoader(
             self.valid_set,
-            batch_size=TrainConfig.mb_size,
+            batch_size=1,
             drop_last=True,
             num_workers=TrainConfig.num_workers,
             pin_memory=True)
@@ -138,7 +145,7 @@ class HyperNetwork(pl.LightningModule):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
         self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
 
-        self.grid = create_3d_grid(batch_size=TrainConfig.mb_size).to(TrainConfig.device)
+        self.grid = create_3d_grid(batch_size=1).to(TrainConfig.device)
 
     def validation_step(self, batch, batch_idx):
         label, partial, mesh = batch
@@ -154,7 +161,7 @@ class HyperNetwork(pl.LightningModule):
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
         out = self.sdf(self.grid, fast_weights)
 
-        return {'out': F.sigmoid(out), 'target': occupancy,
+        return {'out': torch.sigmoid(out), 'target': occupancy,
                 'mesh': mesh, 'partial': partial}
 
     def validation_step_end(self, output):
@@ -237,6 +244,23 @@ if __name__ == '__main__':
         filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
         auto_insert_metric_name=False)
 
+
+    class LitProgressBar(ProgressBar):
+
+        def on_train_epoch_start(self, trainer, pl_module):
+            super().on_train_epoch_start(trainer, pl_module)
+            total_train_batches = self.total_train_batches
+
+            total_batches = total_train_batches
+            if total_batches is None or math.isinf(total_batches) or math.isnan(total_batches):
+                total_batches = None
+            if not self.main_progress_bar.disable:
+                self.main_progress_bar.reset(total=total_batches)
+            self.main_progress_bar.set_description(f"Epoch {trainer.current_epoch}")
+
+
+    bar = LitProgressBar()
+
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
                          gpus=1,
@@ -245,7 +269,7 @@ if __name__ == '__main__':
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
                          callbacks=[GPUStatsMonitor(),
-                                    ProgressBar(),
+                                    bar,
                                     checkpoint_callback],
                          )
 
