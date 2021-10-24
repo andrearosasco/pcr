@@ -1,10 +1,12 @@
+import os
+from configs import DataConfig, ModelConfig, TrainConfig
+os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint
 from pytorch_lightning.core.memory import ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 from torchmetrics import Accuracy, Precision, Recall, F1, AverageMeter
 
 from utils.logger import Logger
-import os
 import random
 from pathlib import Path
 import numpy as np
@@ -14,7 +16,6 @@ from torch.utils.data import DataLoader
 from datasets.ShapeNetPOV import ShapeNet
 from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
-from configs import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm
 import copy
 from utils.misc import create_3d_grid, check_mesh_contains
@@ -97,7 +98,7 @@ class HyperNetwork(pl.LightningModule):
             one_hot[torch.arange(0, partial.shape[0]), object_id] = 1.
 
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
-        prediction = F.sigmoid(self.sdf(samples, fast_weights))
+        prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
         return prediction
 
@@ -128,9 +129,9 @@ class HyperNetwork(pl.LightningModule):
 
     @torch.no_grad()
     def training_step_end(self, output):
-        pred, trgt = F.sigmoid(output['out']), output['target'].unsqueeze(-1).int()
+        pred, trgt = torch.sigmoid(output['out']).detach().cpu(), output['target'].unsqueeze(-1).int().detach().cpu()
         self.accuracy(pred, trgt), self.precision_(pred, trgt)
-        self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(output['loss'])
+        self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(output['loss'].detach().cpu())
 
         self.log('Performances', {'train/accuracy': self.accuracy, 'train/precision': self.precision_,
                                   'train/recall': self.recall, 'train/f1': self.f1,
@@ -197,6 +198,7 @@ class HyperNetwork(pl.LightningModule):
             'complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
         })
 
+
 def print_memory():
     import gc
     i = 0
@@ -204,11 +206,12 @@ def print_memory():
         try:
             if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
                 if obj.is_cuda:
-                    i += 1
+                    i += obj.reshape(-1, 1).shape[0]
         except:
             pass
 
     print(i)
+
 
 def chamfer(samples, predictions, meshes):
     for mesh, pred in zip(meshes, predictions):
@@ -222,9 +225,12 @@ def chamfer(samples, predictions, meshes):
         signed_distance = scene.compute_distance(query_points)
         return np.mean(signed_distance.numpy())
 
+
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
+    # print_memory()
     model = HyperNetwork(ModelConfig)
+    # model.to('cuda')
+    # print_memory()
 
     wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump')
     wandb_logger.watch(model)
