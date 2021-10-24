@@ -113,9 +113,6 @@ class HyperNetwork(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         label, partial, complete, samples, occupancy, _ = batch
 
-        partial, complete = partial.to(TrainConfig().device), complete.to(TrainConfig().device)
-        samples, occupancy = samples.to(ModelConfig.device), occupancy.to(ModelConfig.device)
-
         one_hot = None
         if ModelConfig.use_object_id:
             one_hot = torch.zeros((batch.shape[0], DataConfig.n_classes), dtype=torch.float).to(batch.device)
@@ -145,8 +142,6 @@ class HyperNetwork(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         label, partial, mesh = batch
-
-        partial = partial.to(TrainConfig.device)
 
         occupancy = check_mesh_contains(mesh, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
         occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
