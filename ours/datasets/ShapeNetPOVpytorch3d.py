@@ -134,12 +134,14 @@ class ShapeNet(data.Dataset):
         from pytorch3d.structures import Meshes
         rotation = pytorch3d.transforms.random_rotation().cuda()
 
-        mesh.cpu()
         a = (mesh.verts_packed() @ rotation).cpu()
         b = mesh.faces_packed().cpu()
+
+        mesh = mesh.cpu()
+
         c = mesh.textures
 
-        mesh = Meshes(a, b, c)
+        mesh = Meshes([a], [b], c)
 
         points = sample_points_from_meshes(mesh)[0]
 
@@ -159,11 +161,14 @@ class ShapeNet(data.Dataset):
         o3d.visualization.draw_geometries([pc, coord])
         # TODO END REMOVE DEBUG
 
+        mesh = mesh.cuda()
+
         # Init rasterizer settings
         dist = 5  # random.uniform(3, 4)
         elev = random.uniform(-90, 90)
         azim = random.uniform(0, 360)
-        R, T = look_at_view_transform(dist=dist, elev=elev, azim=azim, degrees=True)
+        # R, T = look_at_view_transform(dist=dist, elev=elev, azim=azim, degrees=True)
+        R, T = look_at_view_transform(dist=1.)
 
         cameras = PerspectiveCameras(
             R=R,
@@ -202,6 +207,8 @@ class ShapeNet(data.Dataset):
             ),
         )
         images, depth = renderer(mesh, cull_backface=True)
+        cv2.imshow("RGB", images[0, ..., :3].cpu().numpy())
+        cv2.imshow("DEPTH", depth[0, ..., 0].cpu().numpy())
 
         # Create complete
         complete = sample_points_from_meshes(mesh, self.partial_points)
@@ -211,6 +218,12 @@ class ShapeNet(data.Dataset):
         # depth = (depth - depth.min()) / (depth.max() - depth.min())
 
         partial = fast_from_depth_to_pointcloud(depth, cameras, R, T)
+
+        # TODO DEBUG START HERE
+        pc = PointCloud()
+        pc.points = Vector3dVector(partial.cpu())
+        o3d.visualization.draw_geometries([pc, coord])
+        # TODO END DEBUG
 
         # Set partial_pcd such that it has the same size of the others
         if partial.shape[0] < self.partial_points:
