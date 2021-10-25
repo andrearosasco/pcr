@@ -9,7 +9,7 @@ import platform
 # PARAMETERS ###########################################################################################################
 
 device = "cuda"
-local = "Windows" in platform.platform()
+local = "Windows" not in platform.platform()
 
 
 @dataclass
@@ -67,7 +67,7 @@ class TrainConfig:
     log_metrics_every = 10 if local else 100
     log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
-    num_workers = 0 if local else 20
+    num_workers = 0 if local else 0
     git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
