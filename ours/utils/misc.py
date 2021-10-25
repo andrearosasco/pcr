@@ -440,15 +440,10 @@ def andreas_sampling(mesh, n_points=2048):
 
 
 def fast_from_depth_to_pointcloud(depth, cameras, R, T):
-
-    import cv2
-    cv2.imshow("DEPTH", depth.cpu().numpy())
-    cv2.waitKey()
-
-    cx = 0
-    cy = 0
-    fy = 1
-    fx = 1
+    cx = 312.9869
+    cy = 241.3109
+    fy = 1067.487
+    fx = 1066.778
 
     k = torch.eye(4).to(depth.device)
     k[0, :3] = torch.FloatTensor([1 / fx, 0, -(cx * fy) / (fx * fy)]).to(depth.device)
@@ -495,7 +490,7 @@ def fast_from_depth_to_pointcloud(depth, cameras, R, T):
     coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
     pc = PointCloud()
     pc.points = Vector3dVector(points.cpu().numpy())
-    o3d.visualization.draw_geometries([pc, coord] , zoom=1, lookat=[0, 0, 0], up=[1, 0, 0], front=[0, 0, -1])
+    o3d.visualization.draw_geometries([pc, coord] , zoom=1, lookat=[0, 0, 0], up=[1, 0, 0], front=[0, 0, 1])
     # TODO END DEBUG
     return points
 
