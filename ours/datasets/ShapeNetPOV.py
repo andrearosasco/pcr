@@ -24,7 +24,7 @@ class ShapeNet(data.Dataset):
         self.percentage_sampled = config.percentage_sampled
         self.implicit_input_dimension = config.implicit_input_dimension
 
-        with (self.data_root / f'{self.mode}.txt').open('r') as file:
+        with (self.data_root / "hard" / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
 
         self.samples = lines
@@ -94,12 +94,12 @@ class ShapeNet(data.Dataset):
             ids = perm[:self.partial_points]
             partial_pcd = partial_pcd[ids]
 
-        if self.mode in ['valid', 'test']:
-            if self.overfit_mode:
-                mesh_path = TrainConfig.overfit_sample
-            else:
-                mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
-            return label, partial_pcd, mesh_path,
+        # if self.mode in ['valid', 'test']:
+        #     if self.overfit_mode:
+        #         mesh_path = TrainConfig.overfit_sample
+        #     else:
+        #         mesh_path = str(self.data_root / self.samples[idx].strip() / 'models/model_normalized.obj')
+        #     return label, partial_pcd, mesh_path,
 
         complete_pcd = np.array(complete_pcd.points)
         complete_pcd = torch.FloatTensor(complete_pcd)

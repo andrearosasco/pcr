@@ -8,10 +8,14 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
+from open3d.cpu.pybind.geometry import PointCloud
+from open3d.cpu.pybind.utility import Vector3dVector
+from pytorch3d.ops import sample_points_from_meshes
+from pytorch3d.loss.point_mesh_distance import point_mesh_face_distance, point_face_distance
 
 from configs.local_config import TrainConfig
 from utils.fps import fp_sampling
-from math import ceil
+from math import ceil, cos, sin
 import open3d as o3d
 
 
@@ -246,6 +250,28 @@ def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05, just_tru
     return results
 
 
+def sample_point_cloud_pytorch3d(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.0001):
+    n_points_uniform = int(total * percentage_sampled)
+    n_points_surface = total - n_points_uniform
+
+    points_uniform = torch.rand(1, n_points_uniform, 3, device=mesh.device) * 2 - 1
+
+    points_surface = sample_points_from_meshes(mesh, n_points_surface)
+
+    points_surface = points_surface + (noise_rate * torch.randn_like(points_surface).to(mesh.device))
+
+    points = torch.cat((points_uniform, points_surface), axis=1)
+
+    points_first_idx = torch.LongTensor([0]).to(mesh.device)
+    tris = mesh.verts_packed()[mesh.faces_packed()]
+
+    distances = point_face_distance(points.squeeze(), points_first_idx, tris, points_first_idx, points.shape[1])
+
+    distances = distances < tollerance
+
+    return points, distances
+
+
 def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
     """
     http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
@@ -411,6 +437,99 @@ def andreas_sampling(mesh, n_points=2048):
 
     labels = [False] * (n_uniform + n_noise) + [True] * n_mesh
     return points, labels
+
+
+def fast_from_depth_to_pointcloud(depth, cameras, R, T):
+
+    import cv2
+    cv2.imshow("DEPTH", depth.cpu().numpy())
+    cv2.waitKey()
+
+    cx = 0
+    cy = 0
+    fy = 1
+    fx = 1
+
+    k = torch.eye(4).to(depth.device)
+    k[0, :3] = torch.FloatTensor([1 / fx, 0, -(cx * fy) / (fx * fy)]).to(depth.device)
+    k[1, 1:3] = torch.FloatTensor([1 / fy, -cy / fy]).to(depth.device)
+
+    sparse_depth = depth.to_sparse()
+    indices = sparse_depth.indices()
+    values = sparse_depth.values()
+    xy_depth = torch.cat((indices.T, values[..., None]), dim=-1)
+
+    import copy
+    final_z = copy.deepcopy(xy_depth[..., -1])
+
+    xy_depth = torch.cat((xy_depth, 1/xy_depth[..., -1].unsqueeze(-1)), dim=-1)
+    xy_depth[:, 2] = 1.
+    points = xy_depth @ k.T * final_z.unsqueeze(-1)
+    points = points[:, 0:3]
+
+    R = R.cuda()
+    T = T.cuda()
+
+    points = points - T[0]
+    points = points @ R[0]
+
+    # TODO normalize points
+    # center_x = (max(points[:, 0]) + min(points[:, 0])) / 2
+    # center_y = (max(points[:, 1]) + min(points[:, 1])) / 2
+    # center_z = (max(points[:, 2]) + min(points[:, 2])) / 2
+    # center = torch.FloatTensor([center_x, center_y, center_z]).cuda()
+    # points = points - center
+    #
+    # dist = max(torch.sqrt(torch.square(points[:, 0]) + torch.square(points[:, 1]) + torch.square(points[:, 2])))
+    # points = points * (1.0 / float(dist))  # scale
+
+    # TODO START DEBUG
+    for i in range(1000):
+        sph_radius = 1
+        y_light = random.uniform(-sph_radius, sph_radius)
+        theta = random.uniform(0, 2 * np.pi)
+        x_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * cos(theta)
+        z_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * sin(theta)
+        points = torch.cat((points, torch.FloatTensor([x_light, y_light, z_light]).unsqueeze(0).to(depth.device)))
+
+    coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
+    pc = PointCloud()
+    pc.points = Vector3dVector(points.cpu().numpy())
+    o3d.visualization.draw_geometries([pc, coord] , zoom=1, lookat=[0, 0, 0], up=[1, 0, 0], front=[0, 0, -1])
+    # TODO END DEBUG
+    return points
+
+
+def from_depth_to_pointcloud(depth, cameras):
+    K = cameras.get_projection_transform().get_matrix()
+    K = K.squeeze().cuda()
+
+    fx = K[0, 0]
+    cx = K[0, 2]
+    fy = K[1, 1]
+    cy = K[1, 2]
+    #
+    cx = 312.9869
+    cy = 241.3109
+    fy = 1067.487
+    fx = 1066.778
+
+    k = np.eye(4)
+    k[0, :3] = np.array([1 / fx, 0, -(cx * fy) / (fx * fy)])
+    k[1, 1:3] = np.array([1 / fy, -cy / fy])
+    z_scale = 10000.0
+
+    # depth = depth / z_scale
+
+    points = []
+    for u in range(depth.shape[0]):
+        for v in range(depth.shape[1]):
+            z = depth[u, v]
+            if z != 0:
+                xyz = (z * k @ np.array([u, v, 1, 1 / z]))[0:3]
+                points.append(xyz)
+
+    return np.stack(points)
 
 
 # if __name__ == "__main__":

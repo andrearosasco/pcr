@@ -18,7 +18,9 @@ class DataConfig:
     multiplier_complete_sampling = 3
     noise_rate = 0.02
     percentage_sampled = 0.1
-    mode = 'easy'  # train, valid, test
+    tollerance = 0.0001
+    mode = 'train'  # train, valid, test
+    diff = 'easy'  # train, valid, test
     n_classes = 55
     implicit_input_dimension = 8192
 
@@ -57,7 +59,7 @@ def git_hash() -> str:
 class TrainConfig:
     device = device
     visible_dev = '0'
-    lr = 1e-5
+    lr = 1e-4
     mb_size = 1
     n_epoch = 20
     clip_value = 5 # 0.5?
