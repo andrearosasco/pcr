@@ -134,9 +134,11 @@ class ShapeNet(data.Dataset):
         from pytorch3d.structures import Meshes
         rotation = pytorch3d.transforms.random_rotation().cuda()
 
-        mesh.cpu()
         a = (mesh.verts_packed() @ rotation).cpu()
         b = mesh.faces_packed().cpu()
+
+        mesh = mesh.cpu()
+
         c = mesh.textures
 
         mesh = Meshes(a, b, c)
