@@ -16,7 +16,7 @@ from scipy.spatial.transform import Rotation as R
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="train", overfit_mode=False):
+    def __init__(self, config, mode="easy/train", overfit_mode=False):
         self.mode = mode
         self.overfit_mode = overfit_mode
         #  Backbone Input
@@ -29,7 +29,7 @@ class ShapeNet(data.Dataset):
         self.percentage_sampled = config.percentage_sampled
         self.implicit_input_dimension = config.implicit_input_dimension
 
-        with (self.data_root / "hard" / f'{self.mode}.txt').open('r') as file:
+        with (self.data_root / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
 
         self.samples = lines
@@ -142,7 +142,7 @@ class ShapeNet(data.Dataset):
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
 
-        return label, partial_pcd, str(complete_path), samples, occupancy
+        return label, partial_pcd, [str(complete_path), mean, var], samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)

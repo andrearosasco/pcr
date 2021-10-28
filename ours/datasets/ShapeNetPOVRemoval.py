@@ -109,7 +109,7 @@ class ShapeNet(data.Dataset):
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
 
-        return label, partial_pcd, str(complete_path), samples, occupancy
+        return label, partial_pcd, [str(complete_path), mean, var], samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)

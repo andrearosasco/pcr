@@ -2,7 +2,8 @@ import math
 import os
 import sys
 
-from configs import DataConfig, ModelConfig, TrainConfig
+from configs import DataConfig, ModelConfig, TrainConfig, server_config
+
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint, ProgressBarBase
 from pytorch_lightning.core.memory import ModelSummary
@@ -16,7 +17,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
-from datasets.ShapeNetPOVDepth import ShapeNet
+from datasets.ShapeNetPOV import ShapeNet
 from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 from tqdm import tqdm
@@ -71,7 +72,7 @@ class HyperNetwork(pl.LightningModule):
         self.training_set = ShapeNet(DataConfig,
                                      mode=f"{DataConfig.mode}/train",
                                      overfit_mode=TrainConfig.overfit_mode)
-        print(len(self.training_set))
+
         self.valid_set = ShapeNet(DataConfig,
                                   mode=f"{DataConfig.mode}/valid",
                                   overfit_mode=TrainConfig.overfit_mode)
@@ -118,7 +119,7 @@ class HyperNetwork(pl.LightningModule):
         self.f1.reset(), self.avg_loss.reset()
 
     def training_step(self, batch, batch_idx):
-        label, partial, _, samples, occupancy = batch
+        label, partial, complete, samples, occupancy, _ = batch
 
         one_hot = None
         if ModelConfig.use_object_id:
@@ -129,7 +130,7 @@ class HyperNetwork(pl.LightningModule):
         out = self.sdf(samples, fast_weights)
 
         loss = F.binary_cross_entropy_with_logits(out, occupancy.unsqueeze(-1))
-        return {'loss': loss, 'out': out.detach().cpu(), 'target': occupancy.detach().cpu()}
+        return {'loss': loss, 'out': out, 'target': occupancy}
 
     @torch.no_grad()
     def training_step_end(self, output):
@@ -148,8 +149,16 @@ class HyperNetwork(pl.LightningModule):
         self.grid = create_3d_grid(batch_size=TrainConfig.test_mb_size,
                                    step=TrainConfig.grid_res_step).to(TrainConfig.device)
 
+        self.current_label = 0
+
     def validation_step(self, batch, batch_idx):
-        label, partial, mesh, _, _ = batch
+        label, partial, mesh = batch
+
+        if int(label.item()) != self.current_label:
+            self.current_label = int(label.item())
+            self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
+            self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
+
 
         occupancy = check_mesh_contains(mesh, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
         occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
@@ -167,44 +176,51 @@ class HyperNetwork(pl.LightningModule):
 
     def validation_step_end(self, output):
         pred, trgt, mesh = output['out'], output['target'].int(), output['mesh']
-        self.accuracy(pred, trgt), self.precision_(pred, trgt), self.avg_chamfer(chamfer(self.grid, pred, mesh))
-        self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
+        self.accuracy.update(pred, trgt), self.precision_.update(pred, trgt), self.avg_chamfer.update(chamfer(self.grid, pred, mesh))
+        self.recall.update(pred, trgt), self.f1.update(pred, trgt), self.avg_loss.update(F.binary_cross_entropy(pred, trgt.float()))
 
+        l = output['label'].item()
+
+        self.log(f'valid/precision_{l}', self.precision_.compute(), on_step=True)
+        self.log(f'valid/recall_{l}', self.recall.compute(), on_step=True)
+        self.log(f'valid/f1_{l}', self.f1.compute(), on_step=True)
+        self.log(f'valid/chamfer_{l}', self.avg_chamfer.compute(), on_step=True)
+        self.log(f'valid/loss_{l}', self.avg_loss.compute(), on_step=True)
         return output
 
-    def validation_epoch_end(self, output):
-        self.log('valid/accuracy', self.accuracy)
-        self.log('valid/precision', self.precision)
-        self.log('valid/recall', self.recall)
-        self.log('valid/f1', self.f1)
-        self.log('valid/chamfer', self.avg_chamfer)
-        self.log('valid/loss', self.avg_loss)
-        self.log('valid_step', self.current_epoch)
+    # def validation_epoch_end(self, output):
+    #     self.log('valid/accuracy', self.accuracy)
+    #     self.log('valid/precision', self.precision_)
+    #     self.log('valid/recall', self.recall)
+    #     self.log('valid/f1', self.f1)
+    #     self.log('valid/chamfer', self.avg_chamfer)
+    #     self.log('valid/loss', self.avg_loss)
 
-        output = output[0]
-        pred, trgt, mesh = output['out'][0], output['target'][0], output['mesh'][0]
+        # output = output[0]
+        # pred, trgt, mesh = output['out'][0], output['target'][0], output['mesh'][0]
+        #
+        # # all positive predictions with labels for true positive and false positives
+        # precision_pc = torch.cat((self.grid[0], trgt), dim=-1).detach().cpu().numpy()
+        # precision_pc = precision_pc[(pred.cpu().numpy() == 1).squeeze()]
+        #
+        # # all true points with labels for true positive and false negatives
+        # recall_pc = torch.cat((self.grid[0], pred), dim=-1).detach().cpu().numpy()
+        # recall_pc = recall_pc[(trgt.cpu().numpy() == 1.).squeeze()]
+        #
+        # complete = o3d.io.read_triangle_mesh(mesh, False)
+        #
+        # complete = complete.sample_points_uniformly(10000)
+        # complete = np.array(complete.points)
+        #
+        # partial = output['partial']
+        #
+        # self.trainer.logger.experiment[0].log({
+        #     'precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
+        #     'recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
+        #     'partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'}),
+        #     'complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
+        # })
 
-        # all positive predictions with labels for true positive and false positives
-        precision_pc = torch.cat((self.grid[0].cpu(), trgt), dim=-1).detach().cpu().numpy()
-        precision_pc = precision_pc[(pred.cpu().numpy() == 1).squeeze()]
-
-        # all true points with labels for true positive and false negatives
-        recall_pc = torch.cat((self.grid[0].cpu(), pred), dim=-1).detach().cpu().numpy()
-        recall_pc = recall_pc[(trgt.cpu().numpy() == 1.).squeeze()]
-
-        complete = o3d.io.read_triangle_mesh(mesh[0], False)
-
-        complete = complete.sample_points_uniformly(10000)
-        complete = np.array(complete.points)
-
-        partial = output['partial']
-
-        self.trainer.logger.experiment[0].log({
-            'precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
-            'recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
-            'partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'}),
-            'complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
-        })
 
 def print_memory():
     import gc
@@ -221,14 +237,11 @@ def print_memory():
 
 
 def chamfer(samples, predictions, meshes):
-    mesh_paths, means, vars = meshes
-    for p, m, v, pred in zip(mesh_paths, means, vars, predictions):
+    for mesh, pred in zip(meshes, predictions):
         query = samples[0, (pred > 0.5).squeeze()]
 
         scene = o3d.t.geometry.RaycastingScene()
-        mesh = o3d.io.read_triangle_mesh(p, False)
-        mesh.translate(-m.cpu().numpy())
-        mesh.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
+        mesh = o3d.io.read_triangle_mesh(mesh, False)
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
         _ = scene.add_triangles(mesh)
         query_points = o3d.core.Tensor(query.cpu().numpy(), dtype=o3d.core.Dtype.Float32)
@@ -245,6 +258,11 @@ if __name__ == '__main__':
     wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump')
     wandb_logger.watch(model)
 
+    # checkpoint = torch.load('./checkpoint/20-10-21_0732.ptc')
+    # aux = {}
+    # aux['state_dict'] = checkpoint
+    # torch.save(aux, './checkpoint/best.ptc')
+    model = HyperNetwork.load_from_checkpoint('./checkpoint/best.ptc', config=server_config.ModelConfig,)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -281,4 +299,5 @@ if __name__ == '__main__':
                                     checkpoint_callback],
                          )
 
-    trainer.fit(model)
+    # trainer.fit(model)
+    trainer.validate(model)
