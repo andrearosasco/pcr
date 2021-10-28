@@ -272,6 +272,41 @@ def sample_point_cloud_pytorch3d(mesh, noise_rate=0.1, percentage_sampled=0.1, t
     return points, distances
 
 
+def create_cube():
+    cube = []
+    for _ in range(2500):
+        p = np.random.rand((3)) - 0.5
+        cube.append([-0.5, p[1], p[2]])
+        cube.append([0.5, p[1], p[2]])
+        cube.append([p[0], -0.5, p[2]])
+        cube.append([p[0], 0.5, p[2]])
+        cube.append([p[0], p[1], -0.5])
+        cube.append([p[0], p[1], 0.5])
+
+    cb = PointCloud()
+    cb.points = Vector3dVector(np.array(cube))
+    cb.paint_uniform_color([0, 1, 0])
+
+    return cb
+
+
+def create_sphere():
+    sphere = []
+    for _ in range(10000):
+        sph_radius = 0.5
+        y = random.uniform(-sph_radius, sph_radius)
+        theta = random.uniform(0, 2 * np.pi)
+        x = np.sqrt(sph_radius ** 2 - y ** 2) * cos(theta)
+        z = np.sqrt(sph_radius ** 2 - y ** 2) * sin(theta)
+        sphere.append([x, y, z])
+
+    sph = PointCloud()
+    sph.points = Vector3dVector(np.array(sphere))
+    sph.paint_uniform_color([1, 0, 0])
+
+    return sph
+
+
 def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
     """
     http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
@@ -288,7 +323,7 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192,
     n_points_uniform = int(total * percentage_sampled)
     n_points_surface = total - n_points_uniform
 
-    points_uniform = np.random.rand(n_points_uniform, 3) * 2 - 1
+    points_uniform = np.random.rand(n_points_uniform, 3) - 0.5
 
     points_surface = np.array(mesh.sample_points_uniformly(n_points_surface).points)
 
@@ -440,10 +475,16 @@ def andreas_sampling(mesh, n_points=2048):
 
 
 def fast_from_depth_to_pointcloud(depth, cameras, R, T):
+
     cx = 312.9869
     cy = 241.3109
     fy = 1067.487
     fx = 1066.778
+
+    cx = 114.8
+    cy = 31.75
+    fy = 76.2
+    fx = 76.2
 
     k = torch.eye(4).to(depth.device)
     k[0, :3] = torch.FloatTensor([1 / fx, 0, -(cx * fy) / (fx * fy)]).to(depth.device)
@@ -479,19 +520,16 @@ def fast_from_depth_to_pointcloud(depth, cameras, R, T):
     # points = points * (1.0 / float(dist))  # scale
 
     # TODO START DEBUG
-    for i in range(1000):
-        sph_radius = 1
-        y_light = random.uniform(-sph_radius, sph_radius)
-        theta = random.uniform(0, 2 * np.pi)
-        x_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * cos(theta)
-        z_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * sin(theta)
-        points = torch.cat((points, torch.FloatTensor([x_light, y_light, z_light]).unsqueeze(0).to(depth.device)))
-
-    coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
-    pc = PointCloud()
-    pc.points = Vector3dVector(points.cpu().numpy())
-    o3d.visualization.draw_geometries([pc, coord] , zoom=1, lookat=[0, 0, 0], up=[1, 0, 0], front=[0, 0, 1])
-    # TODO END DEBUG
+    # for i in range(1000):
+    #     sph_radius = 1
+    #     y_light = random.uniform(-sph_radius, sph_radius)
+    #     theta = random.uniform(0, 2 * np.pi)
+    #     x_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * cos(theta)
+    #     z_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * sin(theta)
+    #     points = torch.cat((points, torch.FloatTensor([x_light, y_light, z_light]).unsqueeze(0).to(depth.device)))
+    #
+    # coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
+   # TODO END DEBUG
     return points
 
 

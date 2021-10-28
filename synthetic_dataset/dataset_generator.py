@@ -4,11 +4,11 @@ from scipy.spatial.transform import Rotation as R
 import tqdm
 import shutil
 import os
-
+import numpy as np
 
 class DatasetGenerator:
     def __init__(self, n=1000, min_side=1., max_side=5., min_trans=0., max_trans=5., min_rot=0., max_rot=90.,
-                 n_points_partial=1000000, min_points=1000, ycb=True):
+                 n_points_partial=1000000, min_points=1000, ycb=False):
         self.n = n
         self.min_side = min_side
         self.max_side = max_side
@@ -83,8 +83,9 @@ class DatasetGenerator:
 
         self.vis.clear_geometries()
         self.vis.add_geometry(cube_mesh)
-        self.vis.capture_screen_image("dataset/" + str(self.i) + "_rgb.png", True)
-        self.vis.capture_depth_image("dataset/" + str(self.i) + "_depth.png", True)
+        # self.vis.capture_screen_image("dataset/" + str(self.i) + "_rgb.png", True)
+        # self.vis.capture_depth_image("dataset/" + str(self.i) + "_depth.png", True)
+        depth = np.array(self.vis.capture_depth_float_buffer(True))
         self.vis.capture_depth_point_cloud("dataset/" + str(self.i) + "_partial-pc.pcd", True)
 
         # Sample points if not box

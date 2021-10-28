@@ -15,7 +15,7 @@ device = "cuda"
 class DataConfig:
     dataset_path = "../data/ShapeNetCore.v2"
     partial_points = 2048
-    multiplier_complete_sampling = 3
+    multiplier_complete_sampling = 10
     noise_rate = 0.02
     percentage_sampled = 0.1
     tollerance = 0.0001

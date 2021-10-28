@@ -11,7 +11,7 @@ device = 'cuda'
 @dataclass
 class DataConfig:
     dataset_path = "../data/ShapeNetCore.v2"
-    partial_points = 2048
+    partial_points = 4096 # TODO Possible OOM
     multiplier_complete_sampling = 3
     noise_rate = 0.02  # amount of noise added to the point sampled on the mesh
     percentage_sampled = 0.1  # number of uniformly sampled points
