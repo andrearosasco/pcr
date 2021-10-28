@@ -1,78 +1,19 @@
 from pathlib import Path
 import numpy as np
-import pytorch3d.transforms
-import torch.utils.data as data
-from pytorch3d.renderer import softmax_rgb_blend, SoftPhongShader, SfMPerspectiveCameras, PerspectiveCameras
-from pytorch3d.renderer.mesh.shading import flat_shading
-from torch import nn
-from configs.local_config import TrainConfig
-import open3d as o3d
-from utils.misc import sample_point_cloud_pytorch3d, fast_from_depth_to_pointcloud
-from numpy import cos, sin
-from pytorch3d.renderer.blending import BlendParams
 import torch
-from pytorch3d.io import load_objs_as_meshes
+import torch.utils.data as data
+import open3d as o3d
+from open3d import visualization
+import open3d
+from open3d.cpu.pybind.visualization import draw_geometries
+from scipy.spatial.transform import Rotation
+from utils.misc import sample_point_cloud, get_mesh_image
 import cv2
-from pytorch3d.renderer import (
-    look_at_view_transform,
-    FoVPerspectiveCameras,
-    PointLights,
-    Materials,
-    RasterizationSettings,
-    MeshRasterizer,
-)
-import random
-from utils.misc import from_depth_to_pointcloud
-from pytorch3d.ops import sample_points_from_meshes
-
-
-class MeshRendererWithDepth(nn.Module):
-    def __init__(self, rasterizer, shader):
-        super().__init__()
-        self.rasterizer = rasterizer
-        self.shader = shader
-
-    def forward(self, meshes_world, **kwargs):
-        fragments = self.rasterizer(meshes_world, **kwargs)
-        images = self.shader(fragments, meshes_world, **kwargs)
-        return images, fragments.zbuf
-
-
-class SoftFlatShader(nn.Module):
-    def __init__(
-            self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None):
-        super().__init__()
-        self.lights = lights if lights is not None else PointLights(device=device)
-        self.materials = (
-            materials if materials is not None else Materials(device=device)
-        )
-        self.cameras = cameras
-        self.blend_params = blend_params if blend_params is not None else BlendParams()
-
-    def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
-        cameras = kwargs.get("cameras", self.cameras)
-        if cameras is None:
-            msg = "Cameras must be specified either at initialization \
-                or in the forward pass of HardFlatShader"
-            raise ValueError(msg)
-        texels = meshes.sample_textures(fragments)
-        lights = kwargs.get("lights", self.lights)
-        materials = kwargs.get("materials", self.materials)
-        blend_params = kwargs.get("blend_params", self.blend_params)
-        colors = flat_shading(
-            meshes=meshes,
-            fragments=fragments,
-            texels=texels,
-            lights=lights,
-            cameras=cameras,
-            materials=materials,
-        )
-        images = softmax_rgb_blend(colors, fragments, blend_params)
-        return images
+o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="train", diff="easy", overfit_mode=False):
+    def __init__(self, config, mode="train", overfit_mode=False):
         self.mode = mode
         self.overfit_mode = overfit_mode
         #  Backbone Input
@@ -83,10 +24,9 @@ class ShapeNet(data.Dataset):
         # Implicit function input
         self.noise_rate = config.noise_rate
         self.percentage_sampled = config.percentage_sampled
-        self.tollerance = config.tollerance
         self.implicit_input_dimension = config.implicit_input_dimension
 
-        with (self.data_root / diff / f'{self.mode}.txt').open('r') as file:
+        with (self.data_root / "hard" / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
 
         self.samples = lines
@@ -95,189 +35,107 @@ class ShapeNet(data.Dataset):
         with (self.data_root / 'classes.txt').open('r') as file:
             self.labels_map = {l.split()[1]: l.split()[0] for l in file.readlines()}
 
-    @staticmethod
-    def pc_norm(pcs):
-        """ pc: NxC, return NxC """
-        centroid = np.mean(pcs, axis=0)
-        pcs = pcs - centroid
-        m = np.max(np.sqrt(np.sum(pcs ** 2, axis=1)))
-        pcs = pcs / m
-        return pcs
-
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
-        padding_length = 0
 
-        # Load mesh
+        # Find the mesh
         dir_path = self.data_root / self.samples[idx].strip()
         label = int(self.labels_map[dir_path.parent.name])
-        complete_path = str(dir_path / 'models/model_normalized.obj')
+        complete_path = dir_path / 'models/model_normalized.obj'
 
-        if self.overfit_mode:
-            complete_path = TrainConfig.overfit_sample
+        # Load and randomly rotate the mesh
+        mesh = o3d.io.read_triangle_mesh(str(complete_path), False)
+        rotation = Rotation.random().as_matrix()
+        mesh = mesh.rotate(rotation)
 
-        device = torch.device("cuda:0")
-        mesh = load_objs_as_meshes([complete_path], load_textures=True, create_texture_atlas=True, device=device)
+        # o3d.visualization.draw_geometries([mesh])  # TODO REMOVE
 
-        # Normalize mesh to be at the center of a sphere with radius 1
-        verts = mesh.verts_packed()
-        center_x = (max(verts[:, 0]) + min(verts[:, 0])) / 2
-        center_y = (max(verts[:, 1]) + min(verts[:, 1])) / 2
-        center_z = (max(verts[:, 2]) + min(verts[:, 2])) / 2
-        center = torch.FloatTensor([center_x, center_y, center_z]).cuda()
-        mesh.offset_verts_(-center)  # center
+        # Define camera transformation and intrinsics
+        #  (Camera is in the origin facing negative z, shifting it of z=1 puts it in front of the object)
+        camera_parameters = open3d.cpu.pybind.camera.PinholeCameraParameters()
+        camera_parameters.extrinsic = np.array([[1, 0, 0, 0],
+                                                [0, 1, 0, 0],
+                                                [0, 0, 1, 1],
+                                                [0, 0, 0, 1]])
+        camera_parameters.intrinsic.set_intrinsics(width=1920, height=1080, fx=1000, fy=1000, cx=959.5, cy=539.5)
 
-        verts = mesh.verts_packed()
-        dist = max(torch.sqrt(torch.square(verts[:, 0]) + torch.square(verts[:, 1]) + torch.square(verts[:, 2])))
-        mesh.scale_verts_((1.0 / float(dist)))  # scale
+        # Move the view and take a depth image
+        viewer = visualization.Visualizer()
+        viewer.create_window(visible=False)
+        viewer.clear_geometries()
 
-        # TODO REMOVE DEBUG
-        from pytorch3d.structures import Meshes
-        rotation = pytorch3d.transforms.random_rotation().cuda()
+        # mesh = mesh.rotate(Rotation.from_euler('x', 180, degrees=True).as_matrix())  # TODO REMOVE
 
-        a = (mesh.verts_packed() @ rotation).cpu()
-        b = mesh.faces_packed().cpu()
+        viewer.add_geometry(mesh)
 
-        mesh = mesh.cpu()
+        control = viewer.get_view_control()
+        control.convert_from_pinhole_camera_parameters(camera_parameters)
 
-        c = mesh.textures
+        depth = viewer.capture_depth_float_buffer(True)
+        import cv2  # TODO REMOVE
+        cv2.imwrite("depth.jpg", (np.array(depth)*255.).astype(int))
+        # cv2.imshow("Depth", np.array(depth))  # TODO REMOVE
+        # cv2.waitKey(0)  # TODO REMOVE
+        viewer.destroy_window()
 
-        mesh = Meshes([a], [b], c)
+        # Generate the partial point cloud
+        depth_image = o3d.geometry.Image(depth)
+        partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image, camera_parameters.intrinsic)
+        partial_pcd = np.array(partial_pcd.points)
 
-        points = sample_points_from_meshes(mesh)[0]
+        # Normalize the partial point cloud (all we could do at test time)
+        mean = np.mean(np.array(partial_pcd), axis=0)
+        partial_pcd = np.array(partial_pcd) - mean
+        var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
+        partial_pcd = partial_pcd / (var * 2)
 
-        # points = points @ rotation
+        # Move the mesh so that it matches the partial point cloud position
+        # (the [0, 0, 1] is to compensate for the fact that the partial pc is in the camera frame)
+        mesh.translate(-mean + [0, 0, 1])
+        mesh.scale(1 / (var * 2), center=[0, 0, 0])
 
-        for i in range(1000):
-            sph_radius = 1
-            y_light = random.uniform(-sph_radius, sph_radius)
-            theta = random.uniform(0, 2 * np.pi)
-            x_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * cos(theta)
-            z_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * sin(theta)
-            points = torch.cat((points, torch.FloatTensor([x_light, y_light, z_light]).unsqueeze(0).to(points.device)))
+        # pc = PointCloud()  # TODO REMOVE
+        # pc.points = Vector3dVector(partial_pcd)  # TODO REMOVE
+        # o3d.visualization.draw_geometries([mesh, pc])  # TODO REMOVE
 
-        coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
-        pc = PointCloud()
-        pc.points = Vector3dVector(points.cpu())
-        o3d.visualization.draw_geometries([pc, coord])
-        # TODO END REMOVE DEBUG
+        # Sample labeled point on the mesh
+        samples, occupancy = sample_point_cloud(mesh,
+                                                self.noise_rate,
+                                                self.percentage_sampled,
+                                                total=self.implicit_input_dimension,
+                                                mode="unsigned")
 
-        mesh = mesh.cuda()
+        # Next lines bring the shape a face of the cube so that there's more space to
+        # complete it. But is it okay for the input to be shifted toward -0.5 and not
+        # centered on the origin?
+        #
+        # normalized[..., 2] = normalized[..., 2] + (-0.5 - min(normalized[..., 2]))
 
-        # Init rasterizer settings
-        dist = 5  # random.uniform(3, 4)
-        elev = random.uniform(-90, 90)
-        azim = random.uniform(0, 360)
-        # R, T = look_at_view_transform(dist=dist, elev=elev, azim=azim, degrees=True)
-        R, T = look_at_view_transform(dist=1.)
-
-        cameras = PerspectiveCameras(
-            R=R,
-            T=T,
-            device=device,
-        )
-
-        raster_settings = RasterizationSettings(
-            image_size=512, blur_radius=0.0, faces_per_pixel=5
-        )
-
-        # Init shader settings
-        materials = Materials(device=device)
-
-        # Light
-        sph_radius = random.uniform(3, 4)
-        y_light = random.uniform(-sph_radius, sph_radius)
-        theta = random.uniform(0, 2 * np.pi)
-        x_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * cos(theta)
-        z_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * sin(theta)
-        lights = PointLights(device=device, location=[[x_light, y_light, z_light]])
-        blend_params = BlendParams(
-            sigma=1e-1,
-            gamma=1e-4,
-            background_color=torch.tensor([1.0, 1.0, 1.0], device=device),
-        )
-
-        # Init renderer
-        renderer = MeshRendererWithDepth(
-            rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
-            shader=SoftPhongShader(
-                lights=lights,
-                cameras=cameras,
-                materials=materials,
-                blend_params=blend_params,
-            ),
-        )
-        images, depth = renderer(mesh, cull_backface=True)
-        cv2.imshow("RGB", images[0, ..., :3].cpu().numpy())
-        cv2.imshow("DEPTH", depth[0, ..., 0].cpu().numpy())
-
-        # Create complete
-        complete = sample_points_from_meshes(mesh, self.partial_points)
-
-        # Create partial
-        depth = depth[0, ..., 0]
-        # TODO assert depth is > 0 everywhere
-        # depth = (depth - depth.min()) / (depth.max() - depth.min())
-
-        # partial = fast_from_depth_to_pointcloud(depth, cameras, R, T)
-        # depth = depth[depth != -1.]
-
-
-
-        sparse_depth = depth.to_sparse()
-        indices = sparse_depth.indices()
-        values = sparse_depth.values()
-        xy_depth = torch.cat((indices.T, values[..., None]), dim=-1)
-        xy_depth = xy_depth[xy_depth[:, 2] != -1.]
-        xy_depth[:, 2] = xy_depth[:, 2] * 1000
-        xyz_unproj_world = cameras.unproject_points(xy_depth, world_coordinates=True)
-
-
-        def show_pc(points):
-            pc = PointCloud()
-            pc.points = Vector3dVector(points)
-            o3d.visualization.draw_geometries([pc, coord])
-
-        xyz = torch.FloatTensor([[[0, 0, 0], [0.25, 0.25, 0.25], [0.5, 0.5, 0.5]]]).to('cuda').float()
-        # I want to have cameras on the origin facing +z with +y upward and see the same xyz
-        xyz_cam = cameras.get_world_to_view_transform().transform_points(xyz)
-        depth = xyz_cam[:, :, 2:]
-        # project the points xyz to the camera
-        xy = cameras.transform_points(xyz)[:, :, :2]
-        # append depth to xy
-        xy_depth = torch.cat((xy, depth), dim=2)
-        # unproject to the world coordinates
-        xyz_unproj_world = cameras.unproject_points(xy_depth, world_coordinates=True)
-        print(torch.allclose(xyz, xyz_unproj_world))  # True
-        # unproject to the camera coordinates
-        xyz_unproj = cameras.unproject_points(xy_depth, world_coordinates=False)
-        print(torch.allclose(xyz_cam, xyz_unproj))  # True
-        # TODO DEBUG START HERE
-        pc = PointCloud()
-        pc.points = Vector3dVector(xyz_unproj[0].cpu().numpy())
-        o3d.visualization.draw_geometries([pc, coord])
-        # TODO END DEBUG
+        partial_pcd = torch.FloatTensor(partial_pcd)
 
         # Set partial_pcd such that it has the same size of the others
-        if partial.shape[0] < self.partial_points:
-            diff = self.partial_points - partial.shape[0]
-            partial = torch.cat((partial, torch.zeros(diff, 3)))
-            padding_length = diff
-        else:
-            perm = torch.randperm(partial.shape[0])
+        if partial_pcd.shape[0] > self.partial_points:
+            perm = torch.randperm(partial_pcd.size(0))
             ids = perm[:self.partial_points]
-            partial = partial[ids]
+            partial_pcd = partial_pcd[ids]
+        else:
+            print(f'Warning: had to pad the partial pcd {complete_path}')
+            diff = self.partial_points - partial_pcd.shape[0]
+            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
 
-        # Create implicit function input and output
-        imp_x, imp_y = sample_point_cloud_pytorch3d(mesh,
-                                                    noise_rate=self.noise_rate,
-                                                    percentage_sampled=self.percentage_sampled,
-                                                    total=self.implicit_input_dimension,
-                                                    tollerance=self.tollerance)
+        samples = torch.tensor(samples).float()
+        occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
 
-        return label, images, partial, complete, imp_x, imp_y, padding_length
+        image = get_mesh_image(complete_path, rotation.T, 1920, 1080, 1000., 1000., 959.5, 539.5, 1., "cuda:0")
+        cv2.imwrite("image.jpg", (image*255.).astype(int))
+        # cv2.imshow("image", image)  # TODO REMOVE
+        # cv2.waitKey(0)  # TODO REMOVE
+        print("Image saved")
+        exit()
+
+        return label, partial_pcd, mesh, samples, occupancy
 
     def __len__(self):
-        return int(self.n_samples / (100 if self.overfit_mode else 1))
+        return int(self.n_samples)
 
 
 if __name__ == "__main__":
@@ -287,48 +145,28 @@ if __name__ == "__main__":
     from open3d.cpu.pybind.utility import Vector3dVector
 
     a = DataConfig()
-    a.dataset_path = Path("..", "..", "data", "ShapeNetCore.v2")
+    a.dataset_path = Path("..", "data", "ShapeNetCore.v2")
     iterator = ShapeNet(a)
     for elem in tqdm(iterator):
-        continue
-        lab, image, part, comp, x, y, pad = elem
+        lab, part, comp, x, y = elem
 
-        # Convert for visualization
-        image = image[0, ..., :3].cpu().numpy()
-        part = part.cpu().numpy()
-        comp = comp.squeeze(0).cpu().numpy()
-        x = x.squeeze(0).cpu().numpy()
-        y = y.cpu().numpy()
+        # pc = PointCloud()
+        # pc.points = Vector3dVector(comp)
+        # o3d.visualization.draw_geometries([pc], window_name="Complete")
+        # #
+        # pc = PointCloud()
+        # pc.points = Vector3dVector(part)
+        # o3d.visualization.draw_geometries([pc], window_name="Partial")
 
-        # Label
-        print(lab)
-
-        # Image
-        cv2.imshow("Image", image)
-        cv2.waitKey()
-
-        # Partial
-        pc = PointCloud()
-        pc.points = Vector3dVector(comp)
-        o3d.visualization.draw_geometries([pc])
-
-        # Complete
-        pc = PointCloud()
-        pc.points = Vector3dVector(part)
-        o3d.visualization.draw_geometries([pc])
-
-        # X & Y
-        colors = []
-        for e in y:
-            if e == 1.:
-                colors.append(np.array([0, 1, 0]))
-            if e == 0.:
-                colors.append(np.array([1, 0, 0]))
-        colors = np.stack(colors)
-        pc = PointCloud()
-        pc.points = Vector3dVector(x)
-        pc.colors = Vector3dVector(colors)
-        o3d.visualization.draw_geometries([pc])
-
-        # pad
-        print("Pad: ", pad)
+        # pc = PointCloud()
+        # pc.points = Vector3dVector(x)
+        # colors = []
+        # for i in y:
+        #     if i == 0.:
+        #         colors.append(np.array([1, 0, 0]))
+        #     if i == 1.:
+        #         colors.append(np.array([0, 1, 0]))
+        # colors = np.stack(colors)
+        # colors = Vector3dVector(colors)
+        # pc.colors = colors
+        # o3d.visualization.draw_geometries([pc])
