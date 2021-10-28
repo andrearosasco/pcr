@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,9 +10,17 @@ import tqdm
 from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
 from pytorch3d.ops import sample_points_from_meshes
-from pytorch3d.loss.point_mesh_distance import point_mesh_face_distance, point_face_distance
-
-from configs.local_config import TrainConfig
+from pytorch3d.loss.point_mesh_distance import point_face_distance
+from pytorch3d.renderer import look_at_view_transform, Materials, PointLights, BlendParams
+import random
+from pytorch3d.renderer import PerspectiveCameras
+from pytorch3d.io import load_objs_as_meshes
+from pytorch3d.structures import Meshes
+from pytorch3d.renderer import RasterizationSettings
+from cmath import cos
+from cmath import sin
+from pytorch3d.renderer import SoftPhongShader
+from pytorch3d.renderer import MeshRasterizer
 from utils.fps import fp_sampling
 from math import ceil, cos, sin
 import open3d as o3d
@@ -105,6 +112,7 @@ def set_bn_momentum_default(bn_momentum):
     def fn(m):
         if isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
             m.momentum = bn_momentum
+
     return fn
 
 
@@ -141,58 +149,58 @@ class BNMomentumScheduler(object):
         return self.lmbd(epoch)
 
 
-def seprate_point_cloud(xyz, num_points, crop, fixed_points = None, padding_zeros = False):
+def seprate_point_cloud(xyz, num_points, crop, fixed_points=None, padding_zeros=False):
     '''
      seprate point cloud: usage : using to generate the incomplete point cloud with a setted number.
     '''
-    _,n,c = xyz.shape
+    _, n, c = xyz.shape
 
     assert n == num_points
     assert c == 3
     if crop == num_points:
         return xyz, None
-        
+
     INPUT = []
     CROP = []
     for points in xyz:
-        if isinstance(crop,list):
-            num_crop = random.randint(crop[0],crop[1])
+        if isinstance(crop, list):
+            num_crop = random.randint(crop[0], crop[1])
         else:
             num_crop = crop
 
         points = points.unsqueeze(0)
 
-        if fixed_points is None:       
-            center = F.normalize(torch.randn(1,1,3),p=2,dim=-1).to(xyz.device)
+        if fixed_points is None:
+            center = F.normalize(torch.randn(1, 1, 3), p=2, dim=-1).to(xyz.device)
         else:
-            if isinstance(fixed_points,list):
-                fixed_point = random.sample(fixed_points,1)[0]
+            if isinstance(fixed_points, list):
+                fixed_point = random.sample(fixed_points, 1)[0]
             else:
                 fixed_point = fixed_points
-            center = fixed_point.reshape(1,1,3).to(xyz.device)
+            center = fixed_point.reshape(1, 1, 3).to(xyz.device)
 
-        distance_matrix = torch.norm(center.unsqueeze(2) - points.unsqueeze(1), p =2 ,dim = -1)  # 1 1 2048
+        distance_matrix = torch.norm(center.unsqueeze(2) - points.unsqueeze(1), p=2, dim=-1)  # 1 1 2048
 
-        idx = torch.argsort(distance_matrix,dim=-1, descending=False)[0,0] # 2048
+        idx = torch.argsort(distance_matrix, dim=-1, descending=False)[0, 0]  # 2048
 
         if padding_zeros:
             input_data = points.clone()
-            input_data[0, idx[:num_crop]] =  input_data[0,idx[:num_crop]] * 0
+            input_data[0, idx[:num_crop]] = input_data[0, idx[:num_crop]] * 0
 
         else:
-            input_data = points.clone()[0, idx[num_crop:]].unsqueeze(0) # 1 N 3
+            input_data = points.clone()[0, idx[num_crop:]].unsqueeze(0)  # 1 N 3
 
-        crop_data =  points.clone()[0, idx[:num_crop]].unsqueeze(0)
+        crop_data = points.clone()[0, idx[:num_crop]].unsqueeze(0)
 
-        if isinstance(crop,list):
-            INPUT.append(fps(input_data,2048))
-            CROP.append(fps(crop_data,2048))
+        if isinstance(crop, list):
+            INPUT.append(fps(input_data, 2048))
+            CROP.append(fps(crop_data, 2048))
         else:
             INPUT.append(input_data)
             CROP.append(crop_data)
 
-    input_data = torch.cat(INPUT,dim=0)# B N 3
-    crop_data = torch.cat(CROP,dim=0)# B M 3
+    input_data = torch.cat(INPUT, dim=0)  # B N 3
+    crop_data = torch.cat(CROP, dim=0)  # B M 3
 
     return input_data.contiguous(), crop_data.contiguous()
 
@@ -222,11 +230,11 @@ def pc_grid_reconstruction(model, min_value=-1, max_value=1, step=0.05, just_tru
     for i in tqdm.tqdm(n_cycle):
         useful = []
         for k in range(nz):
-            if i*nz + k < len(z_range):
-                useful.append(z_range[i*nz + k])
+            if i * nz + k < len(z_range):
+                useful.append(z_range[i * nz + k])
 
         actual = len(useful)
-        zs = torch.stack(useful).unsqueeze(-1).T.repeat(len(grid_2d), 1).T.reshape((len(grid_2d)*actual, 1))
+        zs = torch.stack(useful).unsqueeze(-1).T.repeat(len(grid_2d), 1).T.reshape((len(grid_2d) * actual, 1))
         grid_3d = torch.cat((grid_2d.repeat(actual, 1), zs), dim=1)
 
         # TODO REMOVE DEBUG
@@ -384,21 +392,22 @@ def get_ptcloud_img(ptcloud):
 
     fig.canvas.draw()
     img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-    img = img.reshape(fig.canvas.get_width_height()[::-1] + (3, ))
+    img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     return img
 
 
-def visualize_KITTI(path, data_list, titles = ['input','pred'], cmap=['bwr','autumn'], zdir='y', 
-                         xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1) ):
-    fig = plt.figure(figsize=(6*len(data_list),6))
-    cmax = data_list[-1][:,0].max()
+def visualize_KITTI(path, data_list, titles=['input', 'pred'], cmap=['bwr', 'autumn'], zdir='y',
+                    xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1)):
+    fig = plt.figure(figsize=(6 * len(data_list), 6))
+    cmax = data_list[-1][:, 0].max()
 
     for i in range(len(data_list)):
         data = data_list[i][:-2048] if i == 1 else data_list[i]
-        color = data[:,0] /cmax
-        ax = fig.add_subplot(1, len(data_list) , i + 1, projection='3d')
+        color = data[:, 0] / cmax
+        ax = fig.add_subplot(1, len(data_list), i + 1, projection='3d')
         ax.view_init(30, -120)
-        b = ax.scatter(data[:, 0], data[:, 1], data[:, 2], zdir=zdir, c=color,vmin=-1,vmax=1 ,cmap = cmap[0],s=4,linewidth=0.05, edgecolors = 'black')
+        b = ax.scatter(data[:, 0], data[:, 1], data[:, 2], zdir=zdir, c=color, vmin=-1, vmax=1, cmap=cmap[0], s=4,
+                       linewidth=0.05, edgecolors='black')
         ax.set_title(titles[i])
 
         ax.set_axis_off()
@@ -418,14 +427,15 @@ def visualize_KITTI(path, data_list, titles = ['input','pred'], cmap=['bwr','aut
 
 
 def random_dropping(pc, e):
-    up_num = max(64, 768 // (e//50 + 1))
+    up_num = max(64, 768 // (e // 50 + 1))
     pc = pc
-    random_num = torch.randint(1, up_num, (1,1))[0,0]
+    random_num = torch.randint(1, up_num, (1, 1))[0, 0]
     pc = fps(pc, random_num)
     padding = torch.zeros(pc.size(0), 2048 - pc.size(1), 3).to(pc.device)
-    pc = torch.cat([pc, padding], dim = 1)
+    pc = torch.cat([pc, padding], dim=1)
     return pc
-    
+
+
 #
 # def random_scale(partial, scale_range=[0.8, 1.2]):
 #     scale = torch.rand(1).to(xyz.device) * (scale_range[1] - scale_range[0]) + scale_range[0]
@@ -438,7 +448,7 @@ def create_3d_grid(min_value=-1, max_value=1, step=0.04, bs=1):
     z_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     grid_2d = torch.cartesian_prod(x_range, y_range)
     grid_2d = grid_2d.repeat(x_range.shape[0], 1)
-    z_repeated = z_range.unsqueeze(1).T.repeat(x_range.shape[0]**2, 1).T.reshape(-1)[..., None]
+    z_repeated = z_range.unsqueeze(1).T.repeat(x_range.shape[0] ** 2, 1).T.reshape(-1)[..., None]
     grid_3d = torch.cat((grid_2d, z_repeated), dim=-1)
     grid_3d = grid_3d.unsqueeze(0).repeat(bs, 1, 1)
     return grid_3d
@@ -498,7 +508,7 @@ def fast_from_depth_to_pointcloud(depth, cameras, R, T):
     import copy
     final_z = copy.deepcopy(xy_depth[..., -1])
 
-    xy_depth = torch.cat((xy_depth, 1/xy_depth[..., -1].unsqueeze(-1)), dim=-1)
+    xy_depth = torch.cat((xy_depth, 1 / xy_depth[..., -1].unsqueeze(-1)), dim=-1)
     xy_depth[:, 2] = 1.
     points = xy_depth @ k.T * final_z.unsqueeze(-1)
     points = points[:, 0:3]
@@ -564,6 +574,83 @@ def from_depth_to_pointcloud(depth, cameras):
 
     return np.stack(points)
 
+
+class MeshRendererWithDepth(nn.Module):
+    def __init__(self, rasterizer, shader):
+        super().__init__()
+        self.rasterizer = rasterizer
+        self.shader = shader
+
+    def forward(self, meshes_world, **kwargs):
+        fragments = self.rasterizer(meshes_world, **kwargs)
+        images = self.shader(fragments, meshes_world, **kwargs)
+        return images, fragments.zbuf
+
+
+def get_mesh_image(path=None, rotation=None, width=0, height=0, fx=0, fy=0, cx=0, cy=0, dist=0, device=None):
+    # Load mesh with pytorch3d
+    device = torch.device(device)  # TODO FIX
+    mesh = load_objs_as_meshes([path], load_textures=True, create_texture_atlas=True, device=device)
+
+    # Rotate it like before
+    a = (mesh.verts_packed().cpu() @ rotation.T)
+    b = mesh.faces_packed().cpu()
+    mesh = mesh.cpu()
+    c = mesh.textures
+    mesh = Meshes([a.float()], [b], c)
+
+    # points = mesh.verts_packed()  # TODO REMOVE
+    # pc = PointCloud()  # TODO REMOVE
+    # pc.points = Vector3dVector(points.cpu())  # TODO REMOVE
+    # o3d.visualization.draw_geometries([pc])  # TODO REMOVE
+
+    mesh = mesh.cuda()
+
+    # Set camera
+    R = np.array([[[1, 0, 0],
+                  [0, 1, 0],
+                  [0, 0, 1]]])
+    T = np.array([[0, 0, 1]])
+    focal_length = torch.FloatTensor([fx, fy]).unsqueeze(0)
+    principal_points = torch.FloatTensor([cx, cy]).unsqueeze(0)
+    camera = PerspectiveCameras(focal_length=focal_length, principal_point=principal_points,
+                                T=T, R=R, device=device, in_ndc=False)
+
+    # Init rasterizer settings
+    raster_settings = RasterizationSettings(
+        image_size=(height, width), blur_radius=0.0, faces_per_pixel=5
+    )
+
+    # Init shader settings
+    materials = Materials(device=device)
+
+    # Light
+    sph_radius = random.uniform(3, 4)
+    y_light = random.uniform(-sph_radius, sph_radius)
+    theta = random.uniform(0, 2 * np.pi)
+    x_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * cos(theta)
+    z_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * sin(theta)
+    lights = PointLights(location=[[x_light, y_light, z_light]], device=device)
+    blend_params = BlendParams(
+        sigma=1e-1,
+        gamma=1e-4,
+        background_color=torch.tensor([1.0, 1.0, 1.0], device=device),
+    )
+
+    # Init renderer
+    renderer = MeshRendererWithDepth(
+        rasterizer=MeshRasterizer(cameras=camera, raster_settings=raster_settings),
+        shader=SoftPhongShader(
+            lights=lights,
+            cameras=camera,
+            materials=materials,
+            blend_params=blend_params,
+        ),
+    )
+
+    # Render and return
+    images, _ = renderer(mesh, image_size=(height, width))  # cull_backface=True
+    return images[0, ..., :3].cpu().numpy()
 
 # if __name__ == "__main__":
 #     grid = create_3d_grid()
