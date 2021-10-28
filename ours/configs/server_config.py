@@ -16,7 +16,7 @@ class DataConfig:
     noise_rate = 0.02  # amount of noise added to the point sampled on the mesh
     percentage_sampled = 0.1  # number of uniformly sampled points
     mode = 'easy'  # values: train, valid, test
-    n_classes = 55
+    n_classes = 55 # TODO re-label classes for easy dataset
     implicit_input_dimension = 8192
 
 
@@ -32,7 +32,7 @@ class ModelConfig:
     mlp_ratio = 2.
     qkv_bias = False
     num_heads = 6
-    attn_drop_rate = 0.
+    attn_drop_rate = 0. # TODO non stiamo usando il dropout da nessuna parte?
     drop_rate = 0.
     qk_scale = None
     out_size = 1024
@@ -42,7 +42,7 @@ class ModelConfig:
     # Others
     use_object_id = False
     use_deep_weights_generator = False
-    n_classes = 55
+    n_classes = 55  # TODO re-label classes for easy dataset
     assert divmod(embed_dim, num_heads)[1] == 0
 
 
@@ -53,14 +53,18 @@ def git_hash() -> str:
 @dataclass
 class TrainConfig:
     device = device
-    visible_dev = '0'
+    visible_dev = '1'
     lr = 1e-4
-    mb_size = 64
+    mb_size = 64 # TODO perché serve così basso adesso?
+    test_mb_size = 64
     n_epoch = 20
     clip_value = 5 # 0.5?
     log_metrics_every = 100
     log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
+    # WARNING: Each worker load a different batches so we may end up with
+    #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
+    #   dataset can lead to OOM errors
     num_workers = 20
     git = git_hash()
     optimizer = torch.optim.Adam

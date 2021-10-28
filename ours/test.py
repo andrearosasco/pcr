@@ -3,13 +3,13 @@ from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
 import open3d as o3d
 from models.HyperNetwork import HyperNetwork
-from configs.local_config import ModelConfig
+from configs import ModelConfig
 from torch import nn
 from torch.nn.functional import sigmoid
 from utils.misc import create_3d_grid
 from datasets.ShapeNetPOV import ShapeNet
 from torch.utils.data import DataLoader
-from configs.local_config import DataConfig, TrainConfig
+from configs import DataConfig, TrainConfig
 import os
 import numpy as np
 import random

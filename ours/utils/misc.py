@@ -442,7 +442,7 @@ def random_dropping(pc, e):
 #     return partial * scale
 
 
-def create_3d_grid(min_value=-1, max_value=1, step=0.04, bs=1):
+def create_3d_grid(min_value=-1, max_value=1, step=0.04, batch_size=1):
     x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     y_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     z_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
@@ -450,7 +450,7 @@ def create_3d_grid(min_value=-1, max_value=1, step=0.04, bs=1):
     grid_2d = grid_2d.repeat(x_range.shape[0], 1)
     z_repeated = z_range.unsqueeze(1).T.repeat(x_range.shape[0] ** 2, 1).T.reshape(-1)[..., None]
     grid_3d = torch.cat((grid_2d, z_repeated), dim=-1)
-    grid_3d = grid_3d.unsqueeze(0).repeat(bs, 1, 1)
+    grid_3d = grid_3d.unsqueeze(0).repeat(batch_size, 1, 1)
     return grid_3d
 
 
