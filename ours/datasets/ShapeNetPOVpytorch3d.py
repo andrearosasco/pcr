@@ -215,13 +215,45 @@ class ShapeNet(data.Dataset):
 
         # Create partial
         depth = depth[0, ..., 0]
+        # TODO assert depth is > 0 everywhere
         # depth = (depth - depth.min()) / (depth.max() - depth.min())
 
-        partial = fast_from_depth_to_pointcloud(depth, cameras, R, T)
+        # partial = fast_from_depth_to_pointcloud(depth, cameras, R, T)
+        # depth = depth[depth != -1.]
 
+
+
+        sparse_depth = depth.to_sparse()
+        indices = sparse_depth.indices()
+        values = sparse_depth.values()
+        xy_depth = torch.cat((indices.T, values[..., None]), dim=-1)
+        xy_depth = xy_depth[xy_depth[:, 2] != -1.]
+        xy_depth[:, 2] = xy_depth[:, 2] * 1000
+        xyz_unproj_world = cameras.unproject_points(xy_depth, world_coordinates=True)
+
+
+        def show_pc(points):
+            pc = PointCloud()
+            pc.points = Vector3dVector(points)
+            o3d.visualization.draw_geometries([pc, coord])
+
+        xyz = torch.FloatTensor([[[0, 0, 0], [0.25, 0.25, 0.25], [0.5, 0.5, 0.5]]]).to('cuda').float()
+        # I want to have cameras on the origin facing +z with +y upward and see the same xyz
+        xyz_cam = cameras.get_world_to_view_transform().transform_points(xyz)
+        depth = xyz_cam[:, :, 2:]
+        # project the points xyz to the camera
+        xy = cameras.transform_points(xyz)[:, :, :2]
+        # append depth to xy
+        xy_depth = torch.cat((xy, depth), dim=2)
+        # unproject to the world coordinates
+        xyz_unproj_world = cameras.unproject_points(xy_depth, world_coordinates=True)
+        print(torch.allclose(xyz, xyz_unproj_world))  # True
+        # unproject to the camera coordinates
+        xyz_unproj = cameras.unproject_points(xy_depth, world_coordinates=False)
+        print(torch.allclose(xyz_cam, xyz_unproj))  # True
         # TODO DEBUG START HERE
         pc = PointCloud()
-        pc.points = Vector3dVector(partial.cpu())
+        pc.points = Vector3dVector(xyz_unproj[0].cpu().numpy())
         o3d.visualization.draw_geometries([pc, coord])
         # TODO END DEBUG
 
