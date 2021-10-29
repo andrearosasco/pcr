@@ -270,7 +270,6 @@ if __name__ == '__main__':
         filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
         auto_insert_metric_name=False)
 
-
     class LitProgressBar(ProgressBar):
 
         def on_train_epoch_start(self, trainer, pl_module):

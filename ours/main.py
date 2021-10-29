@@ -118,7 +118,7 @@ class HyperNetwork(pl.LightningModule):
         return prediction
 
     def configure_optimizers(self):
-        optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr)
+        optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)
         return optimizer
 
     def on_train_epoch_start(self):

@@ -56,7 +56,8 @@ def git_hash() -> str:
 class TrainConfig:
     device = device
     visible_dev = '0'
-    lr = 1e-4
+    lr = 1e-4,
+    wd = 0.0005,
     mb_size = 8
     test_mb_size = 1
     n_epoch = 20
@@ -65,7 +66,7 @@ class TrainConfig:
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     num_workers = 4
     git = git_hash()
-    optimizer = torch.optim.Adam
+    optimizer = torch.optim.AdamW,
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
     load_ckpt = None
