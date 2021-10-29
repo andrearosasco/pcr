@@ -23,7 +23,7 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     PC_SIZE = 2048
-    knn_layer = 3 # TODO Prima era 1
+    knn_layer = 1  # TODO Prima era 1
     device = device
     # Transformer
     n_channels = 3
@@ -32,8 +32,8 @@ class ModelConfig:
     mlp_ratio = 2.
     qkv_bias = False
     num_heads = 6
-    attn_drop_rate = 0.2 # TODO non stiamo usando il dropout da nessuna parte? Prima era a 0
-    drop_rate = 0.2
+    attn_drop_rate = 0.  # TODO non stiamo usando il dropout da nessuna parte? Prima era a 0
+    drop_rate = 0.
     qk_scale = None
     out_size = 1024
     # Implicit Function

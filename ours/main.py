@@ -184,7 +184,7 @@ class HyperNetwork(pl.LightningModule):
 
     def validation_epoch_end(self, output):
         self.log('valid/accuracy', self.accuracy)
-        self.log('valid/precision', self.precision)
+        self.log('valid/precision', self.precision_)
         self.log('valid/recall', self.recall)
         self.log('valid/f1', self.f1)
         self.log('valid/chamfer', self.avg_chamfer)
@@ -212,7 +212,7 @@ class HyperNetwork(pl.LightningModule):
             complete = np.array(complete.points)
 
             partial = batch['partial']
-            partial = partial.squeeze()
+            partial = np.array(partial.squeeze())
 
             self.trainer.logger.experiment[0].log({
                 f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
