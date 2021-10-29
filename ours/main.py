@@ -2,9 +2,14 @@ import math
 import os
 import sys
 
-from open3d.cpu.pybind.utility import Vector3dVector
-from open3d.cpu.pybind.visualization import draw_geometries
-from open3d.cpu.pybind.geometry import PointCloud
+try:
+    from open3d.cuda.pybind.utility import Vector3dVector
+    from open3d.cuda.pybind.visualization import draw_geometries
+    from open3d.cuda.pybind.geometry import PointCloud
+except ImportError:
+    from open3d.cpu.pybind.utility import Vector3dVector
+    from open3d.cpu.pybind.visualization import draw_geometries
+    from open3d.cpu.pybind.geometry import PointCloud
 
 from configs import DataConfig, ModelConfig, TrainConfig
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
