@@ -137,9 +137,11 @@ class HyperNetwork(pl.LightningModule):
         self.accuracy(pred, trgt), self.precision_(pred, trgt)
         self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(output['loss'].detach().cpu())
 
-        self.log('Performances', {'train/accuracy': self.accuracy, 'train/precision': self.precision_,
-                                  'train/recall': self.recall, 'train/f1': self.f1,
-                                  'train/loss': self.avg_loss, 'train/step': self.global_step})
+        self.log('train/accuracy', self.accuracy)
+        self.log('train/precision', self.precision_)
+        self.log('train/recall', self.recall)
+        self.log('train/f1', self.f1)
+        self.log('train/loss', self.avg_loss)
 
     def on_validation_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()

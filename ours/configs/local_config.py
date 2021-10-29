@@ -34,8 +34,8 @@ class ModelConfig:
     mlp_ratio = 2.
     qkv_bias = False
     num_heads = 4
-    attn_drop_rate = 0.
-    drop_rate = 0.
+    attn_drop_rate = 0.2
+    drop_rate = 0.2
     qk_scale = None
     out_size = 1024
     # Implicit Function
@@ -61,8 +61,6 @@ class TrainConfig:
     test_mb_size = 1
     n_epoch = 20
     clip_value = 5 # 0.5?
-    log_metrics_every = 10
-    log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     num_workers = 4
     git = git_hash()

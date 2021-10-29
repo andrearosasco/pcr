@@ -32,8 +32,8 @@ class ModelConfig:
     mlp_ratio = 2.
     qkv_bias = False
     num_heads = 6
-    attn_drop_rate = 0. # TODO non stiamo usando il dropout da nessuna parte?
-    drop_rate = 0.
+    attn_drop_rate = 0.2 # TODO non stiamo usando il dropout da nessuna parte?
+    drop_rate = 0.2
     qk_scale = None
     out_size = 1024
     # Implicit Function
@@ -60,7 +60,6 @@ class TrainConfig:
     n_epoch = 20
     clip_value = 5 # 0.5?
     log_metrics_every = 100
-    log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
