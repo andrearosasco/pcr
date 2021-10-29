@@ -2,6 +2,10 @@ import math
 import os
 import sys
 
+from open3d.cpu.pybind.utility import Vector3dVector
+from open3d.cpu.pybind.visualization import draw_geometries
+from open3d.cpu.pybind.geometry import PointCloud
+
 from configs import DataConfig, ModelConfig, TrainConfig
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint, ProgressBarBase
@@ -21,7 +25,7 @@ from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 from tqdm import tqdm
 import copy
-from utils.misc import create_3d_grid, check_mesh_contains
+from utils.misc import create_3d_grid, check_mesh_contains, create_cube
 import open3d as o3d
 import wandb
 
@@ -71,7 +75,7 @@ class HyperNetwork(pl.LightningModule):
         self.training_set = ShapeNet(DataConfig,
                                      mode=f"{DataConfig.mode}/train",
                                      overfit_mode=TrainConfig.overfit_mode)
-        print(len(self.training_set))
+
         self.valid_set = ShapeNet(DataConfig,
                                   mode=f"{DataConfig.mode}/valid",
                                   overfit_mode=TrainConfig.overfit_mode)
@@ -86,7 +90,6 @@ class HyperNetwork(pl.LightningModule):
                           worker_init_fn=seed_worker,
                           generator=generator)
 
-        print(len(self.training_set), '/', TrainConfig.mb_size, '=', len(dl))
         return dl
 
     def val_dataloader(self):
@@ -183,30 +186,51 @@ class HyperNetwork(pl.LightningModule):
         self.log('valid/loss', self.avg_loss)
         self.log('valid_step', self.current_epoch)
 
-        output = output[0]
-        pred, trgt, mesh = output['out'][0], output['target'][0], output['mesh'][0]
+        idxs = [np.random.randint(0, len(output)), -1]
 
-        # all positive predictions with labels for true positive and false positives
-        precision_pc = torch.cat((self.grid[0].cpu(), trgt), dim=-1).detach().cpu().numpy()
-        precision_pc = precision_pc[(pred.cpu().numpy() == 1).squeeze()]
+        for idx, name in zip(idxs, ['fixed', 'random']):
+            batch = output[idx]
+            out, trgt, mesh = batch['out'][0], batch['target'][0], batch['mesh'][0]
+            pred = out > 0.5
 
-        # all true points with labels for true positive and false negatives
-        recall_pc = torch.cat((self.grid[0].cpu(), pred), dim=-1).detach().cpu().numpy()
-        recall_pc = recall_pc[(trgt.cpu().numpy() == 1.).squeeze()]
+            # all positive predictions with labels for true positive and false positives
+            precision_pc = torch.cat((self.grid[0].cpu(), trgt), dim=-1).detach().cpu().numpy()
+            precision_pc = precision_pc[pred.squeeze()]
 
-        complete = o3d.io.read_triangle_mesh(mesh[0], False)
+            # all true points with labels for true positive and false negatives
+            recall_pc = torch.cat((self.grid[0].cpu(), pred.int()), dim=-1).detach().cpu().numpy()
+            recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
-        complete = complete.sample_points_uniformly(10000)
-        complete = np.array(complete.points)
+            complete = o3d.io.read_triangle_mesh(mesh[0], False)
 
-        partial = output['partial']
+            complete = complete.sample_points_uniformly(10000)
+            complete = np.array(complete.points)
 
-        self.trainer.logger.experiment[0].log({
-            'precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
-            'recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
-            'partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'}),
-            'complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
-        })
+            partial = batch['partial']
+            partial = partial.squeeze()
+
+            self.trainer.logger.experiment[0].log({
+                f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
+                f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
+                f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'}),
+                f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
+            })
+
+def visualize(meshes, partials):
+    mesh_paths, rotations, means, vars = meshes
+    p, r, m, v = mesh_paths[0], rotations[0], means[0], vars[0]
+
+
+    mesh1 = o3d.io.read_triangle_mesh(p, False)
+    mesh2 = copy.deepcopy(mesh1)
+    mesh1.rotate(r.cpu().numpy())
+    mesh1.translate(-m.cpu().numpy())
+    mesh1.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
+
+    pc = PointCloud()
+    pc.points = Vector3dVector(partials[0].cpu().numpy())
+
+    draw_geometries([mesh1, mesh2, pc, create_cube()])
 
 def print_memory():
     import gc
@@ -223,12 +247,13 @@ def print_memory():
 
 
 def chamfer(samples, predictions, meshes):
-    mesh_paths, means, vars = meshes
-    for p, m, v, pred in zip(mesh_paths, means, vars, predictions):
+    mesh_paths, rotations, means, vars = meshes
+    for p, r, m, v, pred in zip(mesh_paths, rotations, means, vars, predictions):
         query = samples[0, (pred > 0.5).squeeze()]
 
         scene = o3d.t.geometry.RaycastingScene()
         mesh = o3d.io.read_triangle_mesh(p, False)
+        mesh.rotate(r.cpu().numpy())
         mesh.translate(-m.cpu().numpy())
         mesh.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
@@ -244,8 +269,17 @@ if __name__ == '__main__':
     # model.to('cuda')
     # print_memory()
 
-    wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump')
-    wandb_logger.watch(model)
+
+    config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
+                             not k.startswith("__")},
+              'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
+                             not k.startswith("__")},
+              'watch': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
+                            not k.startswith("__")}}
+
+    wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump', config=config)
+
+    wandb_logger.watch(model, log='all', log_freq=TrainConfig.log_metrics_every)
 
 
     checkpoint_callback = ModelCheckpoint(

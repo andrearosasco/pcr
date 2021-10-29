@@ -13,7 +13,7 @@ device = "cuda"
 class DataConfig:
     dataset_path = "../data/ShapeNetCore.v2"
     partial_points = 2048
-    multiplier_complete_sampling = 10
+    multiplier_complete_sampling = 50
     noise_rate = 0.02
     percentage_sampled = 0.1
     tollerance = 0.0001
@@ -60,7 +60,8 @@ class TrainConfig:
     mb_size = 8
     test_mb_size = 1
     n_epoch = 20
-    clip_value = 5 # 0.5?
+    clip_value = 5  # 0.5?
+    log_metrics_every = 100
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     num_workers = 4
     git = git_hash()

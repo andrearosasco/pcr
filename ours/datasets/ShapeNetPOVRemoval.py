@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.utils.data as data
 import open3d as o3d
+from open3d.cpu.pybind.visualization import draw_geometries
 from torch.utils.data import DataLoader
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
@@ -13,7 +14,7 @@ from scipy.spatial.transform import Rotation as R
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="train", overfit_mode=False):
+    def __init__(self, config, mode="easy/train", overfit_mode=False):
         self.mode = mode
         self.overfit_mode = overfit_mode
         #  Backbone Input
@@ -56,6 +57,10 @@ class ShapeNet(data.Dataset):
             complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
             _, pt_map = complete_pcd.hidden_point_removal([0, 0, dist], 1000)  # radius * 4
             partial_pcd = complete_pcd.select_by_index(pt_map)
+            #
+            # partial_pcd.paint_uniform_color([0, 0, 1])
+            # complete_pcd.paint_uniform_color([1, 0, 0])
+            # draw_geometries([partial_pcd, complete_pcd])
 
             if len(np.array(partial_pcd.points)) != 0:
                 break
@@ -101,7 +106,7 @@ class ShapeNet(data.Dataset):
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
 
-        return label, partial_pcd, [str(complete_path), mean, var], samples, occupancy
+        return label, partial_pcd, [str(complete_path), rotation, mean, var], samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)
