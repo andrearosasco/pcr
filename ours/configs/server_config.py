@@ -60,7 +60,6 @@ class TrainConfig:
     n_epoch = 1
     clip_value = 5 # 0.5?
     log_metrics_every = 100
-    log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the

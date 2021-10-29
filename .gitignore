@@ -9,3 +9,5 @@ ours/datasets/labelled_rgb_meshes
 /pointr/
 ours/checkpoint
 point-cloud-to-gif
+/data/
+/ours/lightning_logs/
