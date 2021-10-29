@@ -1,0 +1,11 @@
+import pytorch3d.io
+from pytorch3d.structures.meshes import Meshes
+from pytorch3d.renderer.mesh import TexturesAtlas
+
+if __name__ == '__main__':
+    verts, faces, aux = pytorch3d.io.load_obj('../data/ShapeNetCore.v2/02691156/b089abdb33c39321afd477f714c68df9/models/model_normalized.obj', load_textures=True, create_texture_atlas=True)
+    print(faces
+)
+    textures = TexturesAtlas(atlas=[aux.texture_atlas])
+    mesh = Meshes(verts=[verts], faces=[faces], textures=textures)
+

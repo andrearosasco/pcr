@@ -11,8 +11,8 @@ device = 'cuda'
 @dataclass
 class DataConfig:
     dataset_path = "../data/ShapeNetCore.v2"
-    partial_points = 4096 # TODO Possible OOM
-    multiplier_complete_sampling = 3
+    partial_points = 2024 # TODO Possible OOM
+    multiplier_complete_sampling = 20
     noise_rate = 0.02  # amount of noise added to the point sampled on the mesh
     percentage_sampled = 0.1  # number of uniformly sampled points
     mode = 'easy'  # values: train, valid, test
@@ -23,7 +23,7 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     PC_SIZE = 2048
-    knn_layer = 1
+    knn_layer = 3 
     device = device
     # Transformer
     n_channels = 3
@@ -32,8 +32,8 @@ class ModelConfig:
     mlp_ratio = 2.
     qkv_bias = False
     num_heads = 6
-    attn_drop_rate = 0. # TODO non stiamo usando il dropout da nessuna parte?
-    drop_rate = 0.
+    attn_drop_rate = 0.2 # TODO non stiamo usando il dropout da nessuna parte?
+    drop_rate = 0.2
     qk_scale = None
     out_size = 1024
     # Implicit Function
@@ -57,7 +57,7 @@ class TrainConfig:
     lr = 1e-4
     mb_size = 64 # TODO perché serve così basso adesso?
     test_mb_size = 32
-    n_epoch = 20
+    n_epoch = 1
     clip_value = 5 # 0.5?
     log_metrics_every = 100
     log_pcs_every = 10000

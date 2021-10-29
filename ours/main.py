@@ -16,7 +16,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
-from datasets.ShapeNetPOVDepth import ShapeNet
+from datasets.ShapeNetPOVRemoval import ShapeNet
 from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 from tqdm import tqdm
@@ -272,6 +272,7 @@ if __name__ == '__main__':
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
                          gpus=1,
+                         profiler="simple",
                          log_every_n_steps=TrainConfig.log_metrics_every,
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,

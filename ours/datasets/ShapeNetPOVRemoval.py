@@ -6,8 +6,8 @@ import torch
 import torch.utils.data as data
 import open3d as o3d
 from open3d import visualization
-from open3d.cpu.pybind import camera
-from open3d.cpu.pybind.visualization import draw_geometries
+from open3d.cuda.pybind import camera
+from open3d.cuda.pybind.visualization import draw_geometries
 from torch.utils.data import DataLoader
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
@@ -29,7 +29,7 @@ class ShapeNet(data.Dataset):
         self.percentage_sampled = config.percentage_sampled
         self.implicit_input_dimension = config.implicit_input_dimension
 
-        with (self.data_root / "hard" / f'{self.mode}.txt').open('r') as file:
+        with (self.data_root / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
 
         self.samples = lines
@@ -62,11 +62,6 @@ class ShapeNet(data.Dataset):
 
             if len(np.array(partial_pcd.points)) != 0:
                 break
-
-        partial_pcd.paint_uniform_color([0, 0, 1])
-
-        complete_pcd.paint_uniform_color([0, 1, 0])
-        draw_geometries([partial_pcd], lookat=[0, 0, 0], up=[0, 1, 0], front=[0, 0, 1], zoom=1)
 
         # Normalize the partial point cloud (all we could do at test time)
         partial_pcd = np.array(partial_pcd.points)
@@ -102,7 +97,7 @@ class ShapeNet(data.Dataset):
             ids = perm[:self.partial_points]
             partial_pcd = partial_pcd[ids]
         else:
-            print(f'Warning: had to pad the partial pcd {complete_path}')
+            print(f'Warning: had to pad the partial pcd {complete_path} - points {partial_pcd.shape[0]} added {self.partial_points - partial_pcd.shape[0]}')
             diff = self.partial_points - partial_pcd.shape[0]
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
 

@@ -6,8 +6,8 @@ import torch
 import torch.utils.data as data
 import open3d as o3d
 from open3d import visualization
-from open3d.cpu.pybind import camera
-from open3d.cpu.pybind.visualization import draw_geometries
+from open3d.cuda.pybind import camera
+from open3d.cuda.pybind.visualization import draw_geometries
 from torch.utils.data import DataLoader
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))

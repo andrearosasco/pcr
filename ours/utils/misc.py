@@ -7,20 +7,20 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
-from open3d.cpu.pybind.geometry import PointCloud
-from open3d.cpu.pybind.utility import Vector3dVector
-from pytorch3d.ops import sample_points_from_meshes
-from pytorch3d.loss.point_mesh_distance import point_face_distance
-from pytorch3d.renderer import look_at_view_transform, Materials, PointLights, BlendParams
+from open3d.cuda.pybind.geometry import PointCloud
+from open3d.cuda.pybind.utility import Vector3dVector
+#from pytorch3d.ops import sample_points_from_meshes
+#from pytorch3d.loss.point_mesh_distance import point_face_distance
+#from pytorch3d.renderer import look_at_view_transform, Materials, PointLights, BlendParams
 import random
-from pytorch3d.renderer import PerspectiveCameras
-from pytorch3d.io import load_objs_as_meshes
-from pytorch3d.structures import Meshes
-from pytorch3d.renderer import RasterizationSettings
+#from pytorch3d.renderer import PerspectiveCameras
+#from pytorch3d.io import load_objs_as_meshes
+#from pytorch3d.structures import Meshes
+#from pytorch3d.renderer import RasterizationSettings
 from cmath import cos
 from cmath import sin
-from pytorch3d.renderer import SoftPhongShader
-from pytorch3d.renderer import MeshRasterizer
+#from pytorch3d.renderer import SoftPhongShader
+#from pytorch3d.renderer import MeshRasterizer
 from utils.fps import fp_sampling
 from math import ceil, cos, sin
 import open3d as o3d
