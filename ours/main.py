@@ -308,7 +308,6 @@ if __name__ == '__main__':
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
                          gpus=1,
-                         profiler="simple",
                          log_every_n_steps=TrainConfig.log_metrics_every,
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,
