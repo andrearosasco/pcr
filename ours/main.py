@@ -145,6 +145,7 @@ class HyperNetwork(pl.LightningModule):
         self.accuracy(pred, trgt), self.precision_(pred, trgt)
         self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(output['loss'].detach().cpu())
 
+        # TODO no running average but just on batch
         self.log('train/accuracy', self.accuracy)
         self.log('train/precision', self.precision_)
         self.log('train/recall', self.recall)
@@ -193,7 +194,7 @@ class HyperNetwork(pl.LightningModule):
 
         idxs = [np.random.randint(0, len(output)), -1]
 
-        for idx, name in zip(idxs, ['fixed', 'random']):
+        for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
             out, trgt, mesh = batch['out'][0], batch['target'][0], batch['mesh'][0]
             pred = out > 0.5
@@ -214,6 +215,7 @@ class HyperNetwork(pl.LightningModule):
             partial = batch['partial']
             partial = np.array(partial.squeeze())
 
+            # TODO Fix partial and Add colors
             self.trainer.logger.experiment[0].log({
                 f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
                 f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
