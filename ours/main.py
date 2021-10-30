@@ -193,7 +193,7 @@ class HyperNetwork(pl.LightningModule):
 
         for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
-            out, trgt, mesh = batch['out'][0], batch['target'][0], batch['mesh'][0]
+            out, trgt, mesh = batch['out'][-1], batch['target'][-1], batch['mesh'][-1]
             pred = out > 0.5
 
             # all positive predictions with labels for true positive and false positives
@@ -217,7 +217,7 @@ class HyperNetwork(pl.LightningModule):
             complete = complete.sample_points_uniformly(10000)
             complete = np.array(complete.points)
 
-            partial = batch['partial'][0]
+            partial = batch['partial'][-1]
             partial = np.array(partial.squeeze())
 
             # TODO Fix partial and Add colors
@@ -328,6 +328,4 @@ if __name__ == '__main__':
                                     checkpoint_callback],
                          )
 
-    # trainer.fit(model)
-    for _ in range(5):
-        trainer.validate(model)
+    trainer.fit(model)
