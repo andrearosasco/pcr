@@ -273,7 +273,6 @@ if __name__ == '__main__':
     # model.to('cuda')
     # print_memory()
 
-
     config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
                              not k.startswith("__")},
               'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if

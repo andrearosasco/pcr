@@ -56,8 +56,8 @@ def git_hash() -> str:
 class TrainConfig:
     device = device
     visible_dev = '0'
-    lr = 1e-4,
-    wd = 0.0005,
+    lr = 1e-4
+    wd = 0.0005
     mb_size = 8
     test_mb_size = 1
     n_epoch = 20
