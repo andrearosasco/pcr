@@ -59,7 +59,7 @@ class TrainConfig:
     lr = 1e-4
     wd = 0.0005
     mb_size = 8
-    test_mb_size = 1
+    test_mb_size = 8
     n_epoch = 20
     clip_value = 5  # 0.5?
     log_metrics_every = 100

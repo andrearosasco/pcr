@@ -197,11 +197,19 @@ class HyperNetwork(pl.LightningModule):
             pred = out > 0.5
 
             # all positive predictions with labels for true positive and false positives
-            precision_pc = torch.cat((self.grid[0].cpu(), trgt), dim=-1).detach().cpu().numpy()
+            colors = torch.zeros_like(self.grid[0], device='cpu')
+            colors[trgt.bool().squeeze()] = torch.tensor([0, 255., 0])
+            colors[~ trgt.bool().squeeze()] = torch.tensor([255., 0, 0])
+
+            precision_pc = torch.cat((self.grid[0].cpu(), colors), dim=-1).detach().cpu().numpy()
             precision_pc = precision_pc[pred.squeeze()]
 
             # all true points with labels for true positive and false negatives
-            recall_pc = torch.cat((self.grid[0].cpu(), pred.int()), dim=-1).detach().cpu().numpy()
+            colors = torch.zeros_like(self.grid[0], device='cpu')
+            colors[pred.squeeze()] = torch.tensor([0, 255., 0])
+            colors[~ pred.squeeze()] = torch.tensor([255., 0, 0])
+
+            recall_pc = torch.cat((self.grid[0].cpu(), colors), dim=-1).detach().cpu().numpy()
             recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
             complete = o3d.io.read_triangle_mesh(mesh[0], False)
@@ -209,16 +217,15 @@ class HyperNetwork(pl.LightningModule):
             complete = complete.sample_points_uniformly(10000)
             complete = np.array(complete.points)
 
-            partial = batch['partial']
+            partial = batch['partial'][0]
             partial = np.array(partial.squeeze())
 
             # TODO Fix partial and Add colors
-            self.trainer.logger.experiment[0].log({
-                f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
-                f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
-                f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'}),
-                f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
-            })
+            self.trainer.logger.experiment[0].log({f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
+            self.trainer.logger.experiment[0].log({f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
+            self.trainer.logger.experiment[0].log({f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
+            self.trainer.logger.experiment[0].log({f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
+            pass
 
 def visualize(meshes, partials):
     mesh_paths, rotations, means, vars = meshes
@@ -321,4 +328,6 @@ if __name__ == '__main__':
                                     checkpoint_callback],
                          )
 
-    trainer.fit(model)
+    # trainer.fit(model)
+    for _ in range(5):
+        trainer.validate(model)

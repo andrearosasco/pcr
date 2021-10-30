@@ -108,7 +108,7 @@ class ShapeNet(data.Dataset):
         return label, partial_pcd, [str(complete_path), rotation, mean, var], samples, occupancy
 
     def __len__(self):
-        return int(self.n_samples)
+        return 24 # int(self.n_samples)
 
 
 if __name__ == "__main__":
