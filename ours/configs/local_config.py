@@ -66,7 +66,7 @@ class TrainConfig:
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     num_workers = 4
     git = git_hash()
-    optimizer = torch.optim.AdamW,
+    optimizer = torch.optim.AdamW
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
     load_ckpt = None
