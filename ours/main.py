@@ -193,7 +193,7 @@ class HyperNetwork(pl.LightningModule):
 
         for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
-            out, trgt, mesh = batch['out'][-1], batch['target'][-1], batch['mesh'][-1]
+            out, trgt, mesh = batch['out'][-1], batch['target'][-1], batch['mesh'][0]
             pred = out > 0.5
 
             # all positive predictions with labels for true positive and false positives
@@ -212,7 +212,7 @@ class HyperNetwork(pl.LightningModule):
             recall_pc = torch.cat((self.grid[0].cpu(), colors), dim=-1).detach().cpu().numpy()
             recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
-            complete = o3d.io.read_triangle_mesh(mesh[0], False)
+            complete = o3d.io.read_triangle_mesh(mesh[-1], False)
 
             complete = complete.sample_points_uniformly(10000)
             complete = np.array(complete.points)
