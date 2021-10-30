@@ -291,6 +291,7 @@ if __name__ == '__main__':
         monitor='valid/f1',
         dirpath='checkpoint',
         filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
+        mode='max',
         auto_insert_metric_name=False)
 
 
