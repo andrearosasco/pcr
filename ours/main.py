@@ -142,15 +142,13 @@ class HyperNetwork(pl.LightningModule):
     @torch.no_grad()
     def training_step_end(self, output):
         pred, trgt = torch.sigmoid(output['out']).detach().cpu(), output['target'].unsqueeze(-1).int().detach().cpu()
-        self.accuracy(pred, trgt), self.precision_(pred, trgt)
-        self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(output['loss'].detach().cpu())
 
-        # TODO no running average but just on batch
-        self.log('train/accuracy', self.accuracy)
-        self.log('train/precision', self.precision_)
-        self.log('train/recall', self.recall)
-        self.log('train/f1', self.f1)
-        self.log('train/loss', self.avg_loss)
+        # This log the metrics on the current batch and accumulate it in the average
+        self.log('train/accuracy', self.accuracy(pred, trgt))
+        self.log('train/precision', self.precision_(pred, trgt))
+        self.log('train/recall', self.recall(pred, trgt))
+        self.log('train/f1', self.f1(pred, trgt))
+        self.log('train/loss', self.avg_loss(output['loss'].detach().cpu()))
 
     def on_validation_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
@@ -184,13 +182,12 @@ class HyperNetwork(pl.LightningModule):
         return output
 
     def validation_epoch_end(self, output):
-        self.log('valid/accuracy', self.accuracy)
-        self.log('valid/precision', self.precision_)
-        self.log('valid/recall', self.recall)
-        self.log('valid/f1', self.f1)
-        self.log('valid/chamfer', self.avg_chamfer)
-        self.log('valid/loss', self.avg_loss)
-        self.log('valid_step', self.current_epoch)
+        self.log('valid/accuracy', self.accuracy.compute())
+        self.log('valid/precision', self.precision_.compute())
+        self.log('valid/recall', self.recall.compute())
+        self.log('valid/f1', self.f1.compute())
+        self.log('valid/chamfer', self.avg_chamfer.compute())
+        self.log('valid/loss', self.avg_loss.compute())
 
         idxs = [np.random.randint(0, len(output)), -1]
 
