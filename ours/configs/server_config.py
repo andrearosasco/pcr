@@ -55,6 +55,7 @@ class TrainConfig:
     device = device
     visible_dev = '1'
     lr = 1e-4
+    wd = 0.0005
     mb_size = 64 # TODO perché serve così basso adesso?
     test_mb_size = 32
     n_epoch = 20
@@ -64,9 +65,9 @@ class TrainConfig:
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
     #   dataset can lead to OOM errors
-    num_workers = 10
+    num_workers = 30
     git = git_hash()
-    optimizer = torch.optim.Adam
+    optimizer = torch.optim.AdamW
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
     load_ckpt = None
