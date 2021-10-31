@@ -159,7 +159,7 @@ class HyperNetwork(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         label, partial, mesh, _, _ = batch
 
-        self.grid = create_3d_grid(batch_size=batch.shape[0],
+        self.grid = create_3d_grid(batch_size=label.shape[0],
                                    step=TrainConfig.grid_res_step).to(TrainConfig.device)
 
         occupancy = check_mesh_contains(mesh, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
