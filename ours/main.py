@@ -155,11 +155,12 @@ class HyperNetwork(pl.LightningModule):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
         self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
 
-        self.grid = create_3d_grid(batch_size=TrainConfig.test_mb_size,
-                                   step=TrainConfig.grid_res_step).to(TrainConfig.device)
 
     def validation_step(self, batch, batch_idx):
         label, partial, mesh, _, _ = batch
+
+        self.grid = create_3d_grid(batch_size=batch.shape[0],
+                                   step=TrainConfig.grid_res_step).to(TrainConfig.device)
 
         occupancy = check_mesh_contains(mesh, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
         occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
