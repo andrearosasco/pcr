@@ -100,8 +100,9 @@ class HyperNetwork(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(
             self.valid_set,
+            shuffle=False,
             batch_size=TrainConfig.test_mb_size,
-            drop_last=True,
+            drop_last=False,
             num_workers=TrainConfig.num_workers,
             pin_memory=True)
 
