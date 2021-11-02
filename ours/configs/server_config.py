@@ -8,8 +8,15 @@ import torch
 
 device = 'cuda'
 
+
 subprocess.run("git add .", shell=True, check=True)
-subprocess.run("git commit -m 'server experiment'", shell=True, check=True)
+process = subprocess.Popen("git commit -m \"server experiment\"", shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+output = process.communicate()[0]
+exitCode = process.returncode
+if exitCode != 0:
+    print(output)
+    exit()
+# subprocess.run("git commit -m 'server experiment'", shell=True, check=True)
 subprocess.run("git push origin main", shell=True, check=True)
 
 @dataclass

@@ -42,7 +42,7 @@ class ModelConfig:
     hidden_dim = 32
     depth = 0
     # Others
-    use_object_id = False
+    use_object_id = True
     use_deep_weights_generator = False
     n_classes = 55
     assert divmod(embed_dim, num_heads)[1] == 0
