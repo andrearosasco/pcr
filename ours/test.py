@@ -16,12 +16,6 @@ import time
 
 if __name__ == "__main__":
 
-    model = HyperNetwork(ModelConfig())
-    # model = nn.DataParallel(model)
-    model.load_state_dict(torch.load("checkpoint/server2.ptc"))
-    model.cuda()
-    model.eval()
-
     # Reproducibility
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
     seed = TrainConfig.seed
@@ -33,9 +27,17 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    train_loader = DataLoader(ShapeNet(DataConfig, mode="train", overfit_mode=TrainConfig.overfit_mode),
+    model = HyperNetwork(ModelConfig())
+    # model = nn.DataParallel(model)
+    model.load_state_dict(torch.load("checkpoint/server2.ptc"))
+    model.cuda()
+    model.eval()
+
+
+
+    train_loader = DataLoader(ShapeNet(DataConfig, mode="test", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
-                              shuffle=True,
+                              shuffle=False,
                               drop_last=True,
                               num_workers=TrainConfig.num_workers,
                               pin_memory=True,
@@ -44,28 +46,36 @@ if __name__ == "__main__":
     grid = create_3d_grid(-0.5, 0.5, 0.01).to(TrainConfig.device)
 
     with torch.no_grad():
-        for label, partial, data, imp_x, imp_y, padding_length in train_loader:
-            partial = partial[:1].to(grid.device)  # take just first batch
-            print("Giving to model ", partial.size(1), " points")
-            start = time.time()
-            results = model(partial, grid)
-            end = time.time()
-            print(end - start)
-            break
+        for label, partial, mesh in train_loader:
 
-    pc = PointCloud()
-    pc.points = Vector3dVector(data[0])
-    o3d.visualization.draw_geometries([pc])
+            if label.squeeze() == 35:
 
-    results = results[0]
-    grid = grid[0]
-    results = results > 0.5
-    results = torch.cat((grid, results), dim=-1)
-    results = results[results[..., -1] == 1.]
-    results = results[:, :3]
+                partial = partial[:1].to(grid.device)  # take just first batch
+                print("Giving to model ", partial.size(1), " points")
+                start = time.time()
+                results = model(partial, grid)
+                end = time.time()
+                print(end - start)
 
-    print("Found ", len(results), " points")
+                tm = o3d.io.read_triangle_mesh(mesh[0], False)
+                o3d.visualization.draw_geometries([tm])
 
-    pc = PointCloud()
-    pc.points = Vector3dVector(results.cpu())
-    o3d.visualization.draw_geometries([pc])
+                pc = PointCloud()
+                pc.points = Vector3dVector(partial.cpu().squeeze().numpy())
+                o3d.visualization.draw_geometries([pc, tm])
+
+                Temperature = 1
+                threshold = 0.5
+
+                results = torch.sigmoid(results[0] / Temperature)
+                grid = grid[0]
+                results = results > threshold
+                results = torch.cat((grid, results), dim=-1)
+                results = results[results[..., -1] == 1.]
+                results = results[:, :3]
+
+                print("Found ", len(results), " points")
+
+                pc1 = PointCloud()
+                pc1.points = Vector3dVector(results.cpu())
+                o3d.visualization.draw_geometries([pc, tm, pc1])
