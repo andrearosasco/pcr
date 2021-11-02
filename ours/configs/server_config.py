@@ -8,6 +8,10 @@ import torch
 
 device = 'cuda'
 
+subprocess.run("git add .", shell=True, check=True)
+subprocess.run("git commit -m 'server experiment'", shell=True, check=True)
+subprocess.run("git push origin main", shell=True, check=True)
+
 @dataclass
 class DataConfig:
     dataset_path = "../data/ShapeNetCore.v2"
@@ -40,7 +44,7 @@ class ModelConfig:
     hidden_dim = 32
     depth = 2
     # Others
-    use_object_id = False
+    use_object_id = True
     use_deep_weights_generator = False
     n_classes = 55  # TODO re-label classes for easy dataset
     assert divmod(embed_dim, num_heads)[1] == 0
