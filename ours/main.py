@@ -131,8 +131,8 @@ class HyperNetwork(pl.LightningModule):
 
         one_hot = None
         if ModelConfig.use_object_id:
-            one_hot = torch.zeros((batch.shape[0], DataConfig.n_classes), dtype=torch.float).to(batch.device)
-            one_hot[torch.arange(0, batch.shape[0]), label] = 1.
+            one_hot = torch.zeros((label.shape[0], DataConfig.n_classes), dtype=torch.float).to(label.device)
+            one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
         out = self.sdf(samples, fast_weights)
@@ -167,8 +167,8 @@ class HyperNetwork(pl.LightningModule):
 
         one_hot = None
         if ModelConfig.use_object_id:
-            one_hot = torch.zeros((batch.shape[0], DataConfig.n_classes), dtype=torch.float).to(batch.device)
-            one_hot[torch.arange(0, batch.shape[0]), label] = 1.
+            one_hot = torch.zeros((label.shape[0], DataConfig.n_classes), dtype=torch.float).to(label.device)
+            one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
         out = self.sdf(self.grid, fast_weights)

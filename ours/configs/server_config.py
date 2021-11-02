@@ -65,7 +65,7 @@ def git_hash() -> str:
 @dataclass
 class TrainConfig:
     device = device
-    visible_dev = '1'
+    visible_dev = '0'
     lr = 1e-4
     wd = 0.0
     mb_size = 64 # TODO perché serve così basso adesso?
