@@ -290,9 +290,7 @@ if __name__ == '__main__':
                             not k.startswith("__")}}
 
     wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump', config=config)
-
-    wandb_logger.watch(model, log='all', log_freq=TrainConfig.log_metrics_every)
-
+    wandb.watch(model, log='all', log_freq=TrainConfig.log_metrics_every)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
