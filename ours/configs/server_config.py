@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import torch
 
 device = 'cuda'
-
+# TODO:
+# Trying lower learning rate
+# Trying reducing one hot dimension for easy setup (55 -> 10)
+# Trying putting the one hot through a linear layer and make it 1024 before concat
+# Try a different initialization
 
 @dataclass
 class DataConfig:

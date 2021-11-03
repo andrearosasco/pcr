@@ -2,6 +2,8 @@ import math
 import os
 import sys
 
+from torch import nn
+
 try:
     from open3d.cuda.pybind.utility import Vector3dVector
     from open3d.cuda.pybind.visualization import draw_geometries
