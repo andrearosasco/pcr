@@ -68,7 +68,7 @@ class HyperNetwork(pl.LightningModule):
         self.backbone = BackBone(config)
         self.sdf = ImplicitFunction(config)
 
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
         for parameter in self.backbone.transformer.parameters():
             if len(parameter.size()) > 2:
                 torch.nn.init.xavier_uniform_(parameter)
