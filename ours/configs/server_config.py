@@ -9,10 +9,6 @@ import torch
 device = 'cuda'
 
 
-
-# subprocess.run("git commit -m 'server experiment'", shell=True, check=True)
-subprocess.run("git push origin main", shell=True, check=True)
-
 @dataclass
 class DataConfig:
     dataset_path = "../data/ShapeNetCore.v2"
@@ -61,7 +57,7 @@ class TrainConfig:
     visible_dev = '0'
     lr = 1e-4
     wd = 0.0
-    mb_size = 128 # TODO perché serve così basso adesso?
+    mb_size = 128
     test_mb_size = 32
     n_epoch = 20
     clip_value = 1 # 0.5?

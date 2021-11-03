@@ -82,7 +82,7 @@ class BackBone(nn.Module):
             generator(global_size, 1),
         ]))
 
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
         # for parameter in self.transformer.parameters():
         #     if len(parameter.size()) > 2:
         #         torch.nn.init.xavier_uniform_(parameter)

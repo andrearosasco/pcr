@@ -12,6 +12,7 @@ except ImportError:
     from open3d.cpu.pybind.geometry import PointCloud
 
 from configs import DataConfig, ModelConfig, TrainConfig
+
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint, ProgressBarBase
 from pytorch_lightning.core.memory import ModelSummary
@@ -65,9 +66,7 @@ class HyperNetwork(pl.LightningModule):
         self.backbone = BackBone(config)
         self.sdf = ImplicitFunction(config)
 
-        for parameter in self.backbone.transformer.parameters():
-            if len(parameter.size()) > 2:
-                torch.nn.init.xavier_uniform_(parameter)
+        self.apply(self._init_weights)
 
         self.accuracy = Accuracy()
         self.precision_ = Precision()
@@ -75,6 +74,13 @@ class HyperNetwork(pl.LightningModule):
         self.f1 = F1()
         self.avg_loss = AverageMeter()
         self.avg_chamfer = AverageMeter()
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv1d) or isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            nn.init.xavier_normal_(m.weight.data, gain=1)
 
     def prepare_data(self):
         self.training_set = ShapeNet(DataConfig,
@@ -87,13 +93,13 @@ class HyperNetwork(pl.LightningModule):
 
     def train_dataloader(self):
         dl = DataLoader(self.training_set,
-                          batch_size=TrainConfig.mb_size,
-                          shuffle=True,
-                          drop_last=True,
-                          num_workers=TrainConfig.num_workers,
-                          pin_memory=True,
-                          worker_init_fn=seed_worker,
-                          generator=generator)
+                        batch_size=TrainConfig.mb_size,
+                        shuffle=True,
+                        drop_last=True,
+                        num_workers=TrainConfig.num_workers,
+                        pin_memory=True,
+                        worker_init_fn=seed_worker,
+                        generator=generator)
 
         return dl
 
@@ -121,6 +127,9 @@ class HyperNetwork(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)
         return optimizer
+
+    def on_train_start(self) -> None:
+        wandb.watch(self, log='all', log_freq=TrainConfig.log_metrics_every)
 
     def on_train_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
@@ -154,7 +163,6 @@ class HyperNetwork(pl.LightningModule):
     def on_validation_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
         self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
-
 
     def validation_step(self, batch, batch_idx):
         label, partial, mesh, _, _ = batch
@@ -223,16 +231,20 @@ class HyperNetwork(pl.LightningModule):
             partial = np.array(partial.squeeze())
 
             # TODO Fix partial and Add colors
-            self.trainer.logger.experiment[0].log({f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
-            self.trainer.logger.experiment[0].log({f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
-            self.trainer.logger.experiment[0].log({f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
-            self.trainer.logger.experiment[0].log({f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
+            self.trainer.logger.experiment[0].log(
+                {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
+            self.trainer.logger.experiment[0].log(
+                {f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
+            self.trainer.logger.experiment[0].log(
+                {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
+            self.trainer.logger.experiment[0].log(
+                {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
             pass
+
 
 def visualize(meshes, partials):
     mesh_paths, rotations, means, vars = meshes
     p, r, m, v = mesh_paths[0], rotations[0], means[0], vars[0]
-
 
     mesh1 = o3d.io.read_triangle_mesh(p, False)
     mesh2 = copy.deepcopy(mesh1)
@@ -244,6 +256,7 @@ def visualize(meshes, partials):
     pc.points = Vector3dVector(partials[0].cpu().numpy())
 
     draw_geometries([mesh1, mesh2, pc, create_cube()])
+
 
 def print_memory():
     import gc
@@ -283,14 +296,13 @@ if __name__ == '__main__':
     # print_memory()
 
     config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
-                             not k.startswith("__")},
+                        not k.startswith("__")},
               'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
-                             not k.startswith("__")},
-              'watch': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-                            not k.startswith("__")}}
+                        not k.startswith("__")},
+              'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
+                        not k.startswith("__")}}
 
     wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump', config=config)
-    wandb.watch(model, log='all', log_freq=TrainConfig.log_metrics_every)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
