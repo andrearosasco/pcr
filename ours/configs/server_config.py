@@ -70,7 +70,7 @@ class TrainConfig:
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
     #   dataset can lead to OOM errors
-    num_workers = 30
+    num_workers = 20
     git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
