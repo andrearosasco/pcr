@@ -310,7 +310,7 @@ if __name__ == '__main__':
               'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
                         not k.startswith("__")}}
 
-    wandb_logger = WandbLogger(project='pcr', log_model='all', entity='coredump', config=config)
+    wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',

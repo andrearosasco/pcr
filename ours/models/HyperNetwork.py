@@ -58,10 +58,9 @@ class BackBone(nn.Module):
             generator = nn.Linear
 
         # Select the right dimension for linear layers
+        global_size = config.out_size
         if config.use_object_id:
-            global_size = config.out_size + config.n_classes
-        else:
-            global_size = config.out_size
+            global_size = config.out_size * 2
 
         # Generate first weight, bias and scale of the input layer of the implicit function
         self.output = nn.ModuleList([nn.ModuleList([
