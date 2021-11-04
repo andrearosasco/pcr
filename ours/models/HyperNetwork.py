@@ -109,7 +109,7 @@ class BackBone(nn.Module):
         global_feature = self.transformer(xyz)  # B M C and B M 3
 
         if object_id is not None:
-            global_feature = torch.cat((global_feature, self.embed_dim(object_id)), dim=-1)
+            global_feature = torch.cat((global_feature, self.embed_id(object_id)), dim=-1)
 
         fast_weights = []
         for layer in self.output:
