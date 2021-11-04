@@ -64,18 +64,26 @@ if __name__ == "__main__":
                 pc.points = Vector3dVector(partial.cpu().squeeze().numpy())
                 o3d.visualization.draw_geometries([pc, tm])
 
-                Temperature = 1
-                threshold = 0.5
+                color = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [0, 1, 1]]
 
-                results = torch.sigmoid(results[0] / Temperature)
-                grid = grid[0]
-                results = results > threshold
-                results = torch.cat((grid, results), dim=-1)
-                results = results[results[..., -1] == 1.]
-                results = results[:, :3]
+                for Temperature in [1]:
+                    thr_pcs = []
+                    prev_thr = 1
+                    for i, threshold in enumerate([0.9, 0.7, 0.5, 0.3, 0.1]):
 
-                print("Found ", len(results), " points")
+                        res = torch.sigmoid(results[0] / Temperature)
 
-                pc1 = PointCloud()
-                pc1.points = Vector3dVector(results.cpu())
-                o3d.visualization.draw_geometries([pc, tm, pc1])
+                        res = torch.logical_and(res > threshold, res < prev_thr)
+
+                        res = torch.cat((grid[0], res), dim=-1)
+                        res = res[res[..., -1] == 1.]
+                        res = res[:, :3]
+
+                        print("Found ", len(results), " points")
+
+                        pc1 = PointCloud()
+                        pc1.points = Vector3dVector(res.cpu())
+                        pc1.paint_uniform_color(color[i])
+                        thr_pcs.append(pc1)
+                        o3d.visualization.draw_geometries([tm] + thr_pcs)
+                        prev_thr = threshold
