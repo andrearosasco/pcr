@@ -9,9 +9,13 @@ import torch
 device = 'cuda'
 # TODO:
 # Trying lower learning rate
+# Try using warm-up
+# Try different sampling
+# Try regularization
 # Trying reducing one hot dimension for easy setup (55 -> 10)
 # Trying putting the one hot through a linear layer and make it 1024 before concat
 # Try a different initialization
+# Try taking the mean of the global features
 
 @dataclass
 class DataConfig:

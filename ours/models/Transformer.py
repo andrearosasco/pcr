@@ -239,6 +239,7 @@ class PCTransformer(nn.Module):
                 x = blk(x + pos)
 
         global_feature = self.increase_dim(x.transpose(1, 2))  # B 1024 N
+        # TODO try with mean
         global_feature = torch.max(global_feature, dim=-1)[0]  # B 1024
 
         global_feature = self.norm(global_feature)  # TODO added
