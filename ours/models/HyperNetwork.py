@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn.init import trunc_normal_
 
+from configs import DataConfig
 from .Transformer import PCTransformer
 
 
@@ -82,6 +83,10 @@ class BackBone(nn.Module):
             generator(global_size, 1),
         ]))
 
+        # TODO Maybe Deeper?
+        self.embed_id = nn.Sequential(nn.Linear(DataConfig.n_classes, 1024),
+                                       nn.LayerNorm(1024))
+
         # self.apply(self._init_weights)
         # for parameter in self.transformer.parameters():
         #     if len(parameter.size()) > 2:
@@ -104,7 +109,7 @@ class BackBone(nn.Module):
         global_feature = self.transformer(xyz)  # B M C and B M 3
 
         if object_id is not None:
-            global_feature = torch.cat((global_feature, object_id), dim=-1)
+            global_feature = torch.cat((global_feature, self.embed_dim(object_id)), dim=-1)
 
         fast_weights = []
         for layer in self.output:
