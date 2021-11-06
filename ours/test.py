@@ -43,7 +43,8 @@ if __name__ == "__main__":
                               pin_memory=True,
                               generator=g)
 
-    grid = create_3d_grid(-0.5, 0.5, 0.01).to(TrainConfig.device)
+    grid_res = 0.01
+    grid = create_3d_grid(-0.5, 0.5, grid_res).to(TrainConfig.device)
 
     with torch.no_grad():
         for label, partial, mesh in train_loader:
@@ -69,21 +70,53 @@ if __name__ == "__main__":
                 for Temperature in [1]:
                     thr_pcs = []
                     prev_thr = 1
-                    for i, threshold in enumerate([0.9, 0.7, 0.5, 0.3, 0.1]):
+                    for i, threshold in enumerate([0.9, 0.8, 0.7, 0.5, 0.3, 0.1]):
 
                         res = torch.sigmoid(results[0] / Temperature)
-
                         res = torch.logical_and(res > threshold, res < prev_thr)
+                        pred = grid[0, res.squeeze() == 1.]
 
-                        res = torch.cat((grid[0], res), dim=-1)
-                        res = res[res[..., -1] == 1.]
-                        res = res[:, :3]
+
 
                         print("Found ", len(results), " points")
 
                         pc1 = PointCloud()
-                        pc1.points = Vector3dVector(res.cpu())
+                        pc1.points = Vector3dVector(pred.cpu())
                         pc1.paint_uniform_color(color[i])
                         thr_pcs.append(pc1)
+                        o3d.visualization.draw_geometries(thr_pcs)
+
+                        for _ in range(2):
+
+                            side = grid_res / 4
+                            cube = torch.cat([
+                                torch.tensor([[-1, -1, -1]]).repeat(pred.shape[0], 1),
+                                torch.tensor([[1, -1, -1]]).repeat(pred.shape[0], 1),
+                                torch.tensor([[-1, -1, 1]]).repeat(pred.shape[0], 1),
+                                torch.tensor([[1, -1, 1]]).repeat(pred.shape[0], 1),
+                                torch.tensor([[-1, 1, -1]]).repeat(pred.shape[0], 1),
+                                torch.tensor([[1, 1, -1]]).repeat(pred.shape[0], 1),
+                                torch.tensor([[-1, 1, 1]]).repeat(pred.shape[0], 1),
+                                torch.tensor([[1, 1, 1]]).repeat(pred.shape[0], 1),
+                            ]).to(TrainConfig.device)
+
+                            cube = cube * side
+                            new_pts = pred.repeat(8, 1)
+
+                            new_pts = new_pts + cube
+                            new_results = model(partial, new_pts.unsqueeze(0))
+
+                            res = torch.sigmoid(new_results[0] / Temperature)
+                            res = torch.logical_and(res > threshold, res < prev_thr)
+                            pred = new_pts[res.squeeze() == 1.]
+
+                            print("Found ", pred.shape[0], " points")
+
+                            pc1 = PointCloud()
+                            pc1.points = Vector3dVector(pred.cpu())
+                            thr_pcs.append(pc1)
+                            o3d.visualization.draw_geometries(thr_pcs)
+
                         o3d.visualization.draw_geometries([tm] + thr_pcs)
+
                         prev_thr = threshold
