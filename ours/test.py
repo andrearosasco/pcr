@@ -5,7 +5,7 @@ import open3d as o3d
 from models.HyperNetwork import HyperNetwork
 from configs.local_config import ModelConfig
 from torch import nn
-from utils.misc import create_3d_grid
+from utils.misc import create_3d_grid, check_mesh_contains
 from datasets.ShapeNetPOV import ShapeNet
 from torch.utils.data import DataLoader
 from configs.local_config import DataConfig, TrainConfig
@@ -33,8 +33,6 @@ if __name__ == "__main__":
     model.cuda()
     model.eval()
 
-
-
     train_loader = DataLoader(ShapeNet(DataConfig, mode="test", overfit_mode=TrainConfig.overfit_mode),
                               batch_size=TrainConfig.mb_size,
                               shuffle=False,
@@ -46,17 +44,24 @@ if __name__ == "__main__":
     grid_res = 0.01
     grid = create_3d_grid(-0.5, 0.5, grid_res).to(TrainConfig.device)
 
+
     with torch.no_grad():
         for label, partial, mesh in train_loader:
 
             if label.squeeze() == 35:
+                gt = check_mesh_contains(mesh, grid)
+                gt = torch.tensor(gt, device=TrainConfig.device).squeeze(0)
 
                 partial = partial[:1].to(grid.device)  # take just first batch
                 print("Giving to model ", partial.size(1), " points")
                 start = time.time()
-                results = model(partial, grid)
+                fast_weights, _ = model.backbone(partial)
+                print('Backbone', time.time() - start)
+                start = time.time()
+                results = model.sdf(grid, fast_weights)
+                print('Implicit Function', time.time() - start)
                 end = time.time()
-                print(end - start)
+
 
                 tm = o3d.io.read_triangle_mesh(mesh[0], False)
                 o3d.visualization.draw_geometries([tm])
@@ -65,20 +70,20 @@ if __name__ == "__main__":
                 pc.points = Vector3dVector(partial.cpu().squeeze().numpy())
                 o3d.visualization.draw_geometries([pc, tm])
 
-                color = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [0, 1, 1]]
+                color = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [0, 1, 1], [0.5, 0, 0], [0, 0.5, 0]]
 
                 for Temperature in [1]:
                     thr_pcs = []
                     prev_thr = 1
-                    for i, threshold in enumerate([0.9, 0.8, 0.7, 0.5, 0.3, 0.1]):
+                    for i, threshold in enumerate([0.95, 0.9, 0.8, 0.7, 0.5, 0.3, 0.1]):  # 93 - 77 - 79 - 58
 
                         res = torch.sigmoid(results[0] / Temperature)
                         res = torch.logical_and(res > threshold, res < prev_thr)
                         pred = grid[0, res.squeeze() == 1.]
+                        correct = gt[res.squeeze() == 1.]
+                        print(f'{prev_thr} > accuracy > {threshold} ')
+                        print(f'{int(sum(correct).item())} / {correct.shape[0]} = {int(sum(correct).item()) / correct.shape[0]}')
 
-
-
-                        print("Found ", len(results), " points")
 
                         pc1 = PointCloud()
                         pc1.points = Vector3dVector(pred.cpu())
@@ -86,7 +91,8 @@ if __name__ == "__main__":
                         thr_pcs.append(pc1)
                         o3d.visualization.draw_geometries(thr_pcs)
 
-                        for _ in range(2):
+                        refine = 0
+                        for _ in range(refine):
 
                             side = grid_res / 4
                             cube = torch.cat([
