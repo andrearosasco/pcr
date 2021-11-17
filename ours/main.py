@@ -309,7 +309,7 @@ if __name__ == '__main__':
 
     run = wandb.init(project='pcr', id='h587tq6m', resume='must')
 
-    artifact = run.use_artifact('rosasco/pcr/model-h587tq6m:v20', type='model')
+    artifact = run.use_artifact('rosasco/pcr/model-h587tq6m:v22', type='model')
     artifact_dir = artifact.download('./resume/')
     wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
 
