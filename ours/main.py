@@ -4,6 +4,8 @@ import sys
 
 from torch import nn
 
+from utils.lightning import SplitProgressBar
+
 try:
     from open3d.cuda.pybind.utility import Vector3dVector
     from open3d.cuda.pybind.visualization import draw_geometries
@@ -305,12 +307,8 @@ if __name__ == '__main__':
               'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
                         not k.startswith("__")},
               'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-                        not k.startswith("__")}}
+                       not k.startswith("__")}}
 
-    run = wandb.init(project='pcr', id='h587tq6m', resume='must')
-
-    artifact = run.use_artifact('rosasco/pcr/model-h587tq6m:v22', type='model')
-    artifact_dir = artifact.download('./resume/')
     wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
 
     checkpoint_callback = ModelCheckpoint(
@@ -321,21 +319,6 @@ if __name__ == '__main__':
         auto_insert_metric_name=False)
 
 
-    class LitProgressBar(ProgressBar):
-
-        def on_train_epoch_start(self, trainer, pl_module):
-            super().on_train_epoch_start(trainer, pl_module)
-            total_train_batches = self.total_train_batches
-
-            total_batches = total_train_batches
-            if total_batches is None or math.isinf(total_batches) or math.isnan(total_batches):
-                total_batches = None
-            if not self.main_progress_bar.disable:
-                self.main_progress_bar.reset(total=total_batches)
-            self.main_progress_bar.set_description(f"Epoch {trainer.current_epoch}")
-
-
-    bar = LitProgressBar()
 
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
@@ -345,58 +328,8 @@ if __name__ == '__main__':
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
                          callbacks=[GPUStatsMonitor(),
-                                    bar,
+                                    SplitProgressBar(),
                                     checkpoint_callback],
                          )
 
-    trainer.fit(model, ckpt_path="./resume/model.ckpt")
-
-# if __name__ == '__main__':
-#     model = HyperNetwork(ModelConfig)
-#
-#     config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
-#                         not k.startswith("__")},
-#               'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
-#                         not k.startswith("__")},
-#               'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-#                        not k.startswith("__")}}
-#
-#     wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
-#
-#     checkpoint_callback = ModelCheckpoint(
-#         monitor='valid/f1',
-#         dirpath='checkpoint',
-#         filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
-#         mode='max',
-#         auto_insert_metric_name=False)
-#
-#
-#     class LitProgressBar(ProgressBar):
-#
-#         def on_train_epoch_start(self, trainer, pl_module):
-#             super().on_train_epoch_start(trainer, pl_module)
-#             total_train_batches = self.total_train_batches
-#
-#             total_batches = total_train_batches
-#             if total_batches is None or math.isinf(total_batches) or math.isnan(total_batches):
-#                 total_batches = None
-#             if not self.main_progress_bar.disable:
-#                 self.main_progress_bar.reset(total=total_batches)
-#             self.main_progress_bar.set_description(f"Epoch {trainer.current_epoch}")
-#
-#
-#     bar = LitProgressBar()
-#
-#     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
-#                          precision=32,
-#                          gpus=1,
-#                          log_every_n_steps=TrainConfig.log_metrics_every,
-#                          logger=[wandb_logger],
-#                          gradient_clip_val=TrainConfig.clip_value,
-#                          gradient_clip_algorithm='value',
-#                          callbacks=[GPUStatsMonitor(),
-#                                     bar,
-#                                     checkpoint_callback],
-#                          )
-#
-#     trainer.fit(model)
+    trainer.fit(model)

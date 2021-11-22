@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from timm.models.layers import DropPath, trunc_normal_
 from .dgcnn_group import DGCNN_Grouper
-from utils.logger import *
 
 
 def get_knn_index(coor_q, coor_k=None):

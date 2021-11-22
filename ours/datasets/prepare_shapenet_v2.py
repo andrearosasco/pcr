@@ -8,18 +8,18 @@ import tqdm
 from nltk.corpus import wordnet
 
 # Some directories do not contain any mesh
-# sp = Path('..') / '..' / 'data' / 'ShapeNetCore.v2'
-#
-# for cls in sp.glob('*'):
-#     for inst in cls.glob('*'):
-#         if not (inst / 'models/model_normalized.obj').exists():
-#             shutil.rmtree(inst)
+sp = Path('..') / '..' / 'data' / 'ShapeNetCore.v2'
+
+for cls in sp.glob('*'):
+    for inst in cls.glob('*'):
+        if not (inst / 'models/model_normalized.obj').exists():
+            shutil.rmtree(inst)
 
 # # # After the dataset has been unzipped delete the voxel files
 # # (They are big and useless, just like you)
-# sp = Path('..') / '..' / 'data' / 'ShapeNetCore.v2'
-# for file in filter(lambda x: x.suffix == '.binvox', list(sp.rglob('*'))):
-#     file.unlink(missing_ok=True)
+sp = Path('..') / '..' / 'data' / 'ShapeNetCore.v2'
+for file in filter(lambda x: x.suffix == '.binvox', list(sp.rglob('*'))):
+    file.unlink(missing_ok=True)
 
 
 # # To load just the mesh without attempting to read the textures we make them unreachable

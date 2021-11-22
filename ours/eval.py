@@ -10,7 +10,6 @@ from pytorch_lightning.core.memory import ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 from torchmetrics import Accuracy, Precision, Recall, F1, AverageMeter
 
-from utils.logger import Logger
 import random
 from pathlib import Path
 import numpy as np

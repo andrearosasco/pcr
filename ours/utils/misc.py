@@ -10,7 +10,7 @@ import tqdm
 try:
     from open3d.cuda.pybind.geometry import PointCloud
     from open3d.cuda.pybind.utility import Vector3dVector
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     from open3d.cpu.pybind.geometry import PointCloud
     from open3d.cpu.pybind.utility import Vector3dVector
 #from pytorch3d.ops import sample_points_from_meshes
@@ -89,6 +89,21 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+def chamfer(samples, predictions, meshes):
+    mesh_paths, rotations, means, vars = meshes
+    for p, r, m, v, pred in zip(mesh_paths, rotations, means, vars, predictions):
+        query = samples[0, (pred > 0.5).squeeze()]
+
+        scene = o3d.t.geometry.RaycastingScene()
+        mesh = o3d.io.read_triangle_mesh(p, False)
+        mesh.rotate(r.cpu().numpy())
+        mesh.translate(-m.cpu().numpy())
+        mesh.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
+        mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+        _ = scene.add_triangles(mesh)
+        query_points = o3d.core.Tensor(query.cpu().numpy(), dtype=o3d.core.Dtype.Float32)
+        signed_distance = scene.compute_distance(query_points)
+        return np.mean(signed_distance.numpy())
 
 def is_seq_of(seq, expected_type, seq_type=None):
     """Check whether it is a sequence of some type.

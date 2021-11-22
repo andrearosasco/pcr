@@ -137,3 +137,5 @@ dmypy.json
 experiments/
 data/ShapeNet55-34/shapenet_pc
 KITTI_VIS/
+/resume/
+/artifacts/
