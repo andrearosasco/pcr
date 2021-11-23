@@ -84,6 +84,12 @@ if __name__ == "__main__":
         size = int(sqrt(res.shape[0]))
         res = res.reshape((size, size, 1))
 
-        cv2.imshow("Prob", res.cpu().numpy())
+        img = res.cpu().numpy()
+
+        # (img * 255).astype(int)[..., 0]
+
+        img = cv2.applyColorMap(img, cv2.COLORMAP_HOT)
+        (img * 255).astype(int)[..., 0]
+        cv2.imshow("Prob", img)
         cv2.waitKey(10000)
         pass
