@@ -1,88 +1,111 @@
-# -*- coding: utf-8 -*-
-# @Author: Thibault GROUEIX
-# @Date:   2019-08-07 20:54:24
-# @Last Modified by:   Haozhe Xie
-# @Last Modified time: 2019-12-18 15:06:25
-# @Email:  cshzxie@gmail.com
-
+# import multiprocessing
 import torch
+from sklearn.neighbors import KDTree
+import numpy as np
 
-# import chamfer
-from chamferdist import ChamferDistance
-ch = ChamferDistance()
+def chamfer_distance(points1, points2, use_kdtree=True, give_id=False):
+    ''' Returns the chamfer distance for the sets of points.
 
-# class ChamferFunction(torch.autograd.Function):
-#     @staticmethod
-#     def forward(ctx, xyz1, xyz2):
-#         dist1, dist2, idx1, idx2 = chamfer.forward(xyz1, xyz2)
-#         ctx.save_for_backward(xyz1, xyz2, idx1, idx2)
-#
-#         return dist1, dist2
-#
-#     @staticmethod
-#     def backward(ctx, grad_dist1, grad_dist2):
-#         xyz1, xyz2, idx1, idx2 = ctx.saved_tensors
-#         grad_xyz1, grad_xyz2 = chamfer.backward(xyz1, xyz2, idx1, idx2, grad_dist1, grad_dist2)
-#         return grad_xyz1, grad_xyz2
-
-
-class ChamferDistanceL2(torch.nn.Module):
-    f''' Chamder Distance L2
+    Args:
+        points1 (numpy array): first point set
+        points2 (numpy array): second point set
+        use_kdtree (bool): whether to use a kdtree
+        give_id (bool): whether to return the IDs of nearest points
     '''
-    def __init__(self, ignore_zeros=False):
-        super().__init__()
-        self.ignore_zeros = ignore_zeros
+    if use_kdtree:
+        return chamfer_distance_kdtree(points1, points2, give_id=give_id)
+    else:
+        return chamfer_distance_naive(points1, points2)
 
-    def forward(self, xyz1, xyz2):
-        batch_size = xyz1.size(0)
-        if batch_size == 1 and self.ignore_zeros:
-            non_zeros1 = torch.sum(xyz1, dim=2).ne(0)
-            non_zeros2 = torch.sum(xyz2, dim=2).ne(0)
-            xyz1 = xyz1[non_zeros1].unsqueeze(dim=0)
-            xyz2 = xyz2[non_zeros2].unsqueeze(dim=0)
 
-        dist1 = ch(xyz1, xyz2)
-        dist2 = ch(xyz1, xyz2, reverse=True)
-        return torch.mean(dist1) + torch.mean(dist2)
+def chamfer_distance_naive(points1, points2):
+    ''' Naive implementation of the Chamfer distance.
 
-class ChamferDistanceL2_split(torch.nn.Module):
-    f''' Chamder Distance L2
+    Args:
+        points1 (numpy array): first point set
+        points2 (numpy array): second point set
     '''
-    def __init__(self, ignore_zeros=False):
-        super().__init__()
-        self.ignore_zeros = ignore_zeros
+    assert(points1.size() == points2.size())
+    batch_size, T, _ = points1.size()
 
-    def forward(self, xyz1, xyz2):
-        batch_size = xyz1.size(0)
-        if batch_size == 1 and self.ignore_zeros:
-            non_zeros1 = torch.sum(xyz1, dim=2).ne(0)
-            non_zeros2 = torch.sum(xyz2, dim=2).ne(0)
-            xyz1 = xyz1[non_zeros1].unsqueeze(dim=0)
-            xyz2 = xyz2[non_zeros2].unsqueeze(dim=0)
+    points1 = points1.view(batch_size, T, 1, 3)
+    points2 = points2.view(batch_size, 1, T, 3)
 
-        dist1 = ch(xyz1, xyz2)
-        dist2 = ch(xyz1, xyz2, reverse=True)
-        return torch.mean(dist1), torch.mean(dist2)
+    distances = (points1 - points2).pow(2).sum(-1)
 
-class ChamferDistanceL1(torch.nn.Module):
-    f''' Chamder Distance L1
+    chamfer1 = distances.min(dim=1)[0].mean(dim=1)
+    chamfer2 = distances.min(dim=2)[0].mean(dim=1)
+
+    chamfer = chamfer1 + chamfer2
+    return chamfer
+
+
+def chamfer_distance_kdtree(points1, points2, give_id=False):
+    ''' KD-tree based implementation of the Chamfer distance.
+
+    Args:
+        points1 (numpy array): first point set
+        points2 (numpy array): second point set
+        give_id (bool): whether to return the IDs of the nearest points
     '''
-    def __init__(self, ignore_zeros=False):
-        super().__init__()
-        self.ignore_zeros = ignore_zeros
+    # Points have size batch_size x T x 3
+    batch_size = points1.size(0)
 
-    def forward(self, xyz1, xyz2):
-        batch_size = xyz1.size(0)
-        if batch_size == 1 and self.ignore_zeros:
-            non_zeros1 = torch.sum(xyz1, dim=2).ne(0)
-            non_zeros2 = torch.sum(xyz2, dim=2).ne(0)
-            xyz1 = xyz1[non_zeros1].unsqueeze(dim=0)
-            xyz2 = xyz2[non_zeros2].unsqueeze(dim=0)
+    # First convert points to numpy
+    points1_np = points1.detach().cpu().numpy()
+    points2_np = points2.detach().cpu().numpy()
 
-        dist1 = ch(xyz1, xyz2)
-        dist2 = ch(xyz1, xyz2, reverse=True)
-        # import pdb
-        # pdb.set_trace()
-        dist1 = torch.sqrt(dist1)
-        dist2 = torch.sqrt(dist2)
-        return (torch.mean(dist1) + torch.mean(dist2))/2
+    # Get list of nearest neighbors indieces
+    idx_nn_12, _ = get_nearest_neighbors_indices_batch(points1_np, points2_np)
+    idx_nn_12 = torch.LongTensor(idx_nn_12).to(points1.device)
+    # Expands it as batch_size x 1 x 3
+    idx_nn_12_expand = idx_nn_12.view(batch_size, -1, 1).expand_as(points1)
+
+    # Get list of nearest neighbors indieces
+    idx_nn_21, _ = get_nearest_neighbors_indices_batch(points2_np, points1_np)
+    idx_nn_21 = torch.LongTensor(idx_nn_21).to(points1.device)
+    # Expands it as batch_size x T x 3
+    idx_nn_21_expand = idx_nn_21.view(batch_size, -1, 1).expand_as(points2)
+
+    # Compute nearest neighbors in points2 to points in points1
+    # points_12[i, j, k] = points2[i, idx_nn_12_expand[i, j, k], k]
+    points_12 = torch.gather(points2, dim=1, index=idx_nn_12_expand)
+
+    # Compute nearest neighbors in points1 to points in points2
+    # points_21[i, j, k] = points2[i, idx_nn_21_expand[i, j, k], k]
+    points_21 = torch.gather(points1, dim=1, index=idx_nn_21_expand)
+
+    # Compute chamfer distance
+    chamfer1 = (points1 - points_12).pow(2).sum(2).mean(1)
+    chamfer2 = (points2 - points_21).pow(2).sum(2).mean(1)
+
+    # Take sum
+    chamfer = chamfer1 + chamfer2
+    print('Chamfer Recall ', chamfer1)
+    print('Chamfer Precision ', chamfer2)
+
+    # If required, also return nearest neighbors
+    if give_id:
+        return chamfer1, chamfer2, idx_nn_12, idx_nn_21
+
+    return chamfer
+
+
+def get_nearest_neighbors_indices_batch(points_src, points_tgt, k=1):
+    ''' Returns the nearest neighbors for point sets batchwise.
+
+    Args:
+        points_src (numpy array): source points
+        points_tgt (numpy array): target points
+        k (int): number of nearest neighbors to return
+    '''
+    indices = []
+    distances = []
+
+    for (p1, p2) in zip(points_src, points_tgt):
+        kdtree = KDTree(p2)
+        dist, idx = kdtree.query(p1, k=k)
+        indices.append(idx)
+        distances.append(dist)
+
+    return indices, distances

@@ -1,8 +1,16 @@
 import torch
-from open3d.cpu.pybind.geometry import PointCloud, LineSet
-from open3d.cpu.pybind.utility import Vector3dVector, Vector2iVector
 import open3d as o3d
-from open3d.cpu.pybind.visualization import draw_geometries
+
+from utils.ChamferDistance import chamfer_distance
+
+try:
+    from open3d.cpu.pybind.geometry import PointCloud, LineSet
+    from open3d.cpu.pybind.utility import Vector3dVector, Vector2iVector
+    from open3d.cpu.pybind.visualization import draw_geometries
+except ImportError:
+    from open3d.cuda.pybind.geometry import PointCloud, LineSet
+    from open3d.cuda.pybind.utility import Vector3dVector, Vector2iVector
+    from open3d.cuda.pybind.visualization import draw_geometries
 from torch.nn import BCEWithLogitsLoss
 
 from models.HyperNetwork import HyperNetwork
@@ -17,6 +25,7 @@ import numpy as np
 import random
 import time
 
+from sklearn.neighbors import NearestNeighbors
 if __name__ == "__main__":
 
     # Reproducibility
@@ -51,7 +60,7 @@ if __name__ == "__main__":
 
     for label, partial, mesh in train_loader:
 
-        if label.squeeze() == 35:
+        if label.squeeze() == 10:
             gt = check_mesh_contains(mesh, grid)
             gt = torch.tensor(gt, device=TrainConfig.device)
 
@@ -68,7 +77,7 @@ if __name__ == "__main__":
 
             prev_num = [-1] * 10
 
-            for step in range(1000):
+            for step in range(10):
 
                 partial = partial[:1].to(TrainConfig.device)  # take just first batch
                 fast_weights, _ = model.backbone(partial)
@@ -83,7 +92,7 @@ if __name__ == "__main__":
                 print('Loss ', loss_value.item())
 
                 grad = refined_pred.grad.data
-                refined_pred = refined_pred - (1 * grad)
+                refined_pred = refined_pred - (0.05 * grad)
 
                 with torch.no_grad():
                     prev_thr = 1
@@ -115,18 +124,33 @@ if __name__ == "__main__":
                                             requires_grad=True)
                 print()
 
+            pc = PointCloud()
+            pc.points = Vector3dVector(partial.cpu().squeeze().numpy())
+            o3d.visualization.draw_geometries([pc])
+
+            tm = o3d.io.read_triangle_mesh(mesh[0], False)
 
             aux1 = PointCloud()
             idx = (torch.sigmoid(logits.squeeze(-1).detach()) > 0.5).squeeze().bool()
             aux1.points = Vector3dVector(grid[0, idx, :].cpu().detach().numpy())
-            draw_geometries([aux1])
+            draw_geometries([tm, aux1])
+
+            gt = tm.sample_points_uniformly(grid[:, idx, :].shape[1])
+
+            cf1 = chamfer_distance(torch.tensor(gt.points, device=TrainConfig.device).unsqueeze(0)*10,
+                                   grid[:, idx, :].detach().cuda()*10)
 
             res = torch.sigmoid(results.squeeze().detach())
             eval_idx = torch.logical_and(res > 0, res < 1).bool()
             pred = refined_pred[0, eval_idx]
             aux2 = PointCloud()
             aux2.points = Vector3dVector(pred.detach().cpu().numpy())
-            draw_geometries([aux2])
+
+            cf2 = chamfer_distance(torch.tensor(gt.points, device=TrainConfig.device).unsqueeze(0)*10,
+                                   refined_pred[:, eval_idx, :].detach().cuda()*10)
+
+            print('Chamfer distance ', cf1)
+            print('Chamfer distance ', cf2)
 
             v = torch.vstack([grid[0, idx, :], pred.cpu()]).detach().numpy()
             e = np.arange(0, v.shape[0]).reshape([2, v.shape[0] // 2]).T
@@ -148,9 +172,7 @@ if __name__ == "__main__":
                 # tm = o3d.io.read_triangle_mesh(mesh[0], False)
                 # o3d.visualization.draw_geometries([tm])
                 #
-                # pc = PointCloud()
-                # pc.points = Vector3dVector(partial.cpu().squeeze().numpy())
-                # o3d.visualization.draw_geometries([pc, tm])
+
                 #
                 # thr_pcs = []
                 # prev_thr = 1

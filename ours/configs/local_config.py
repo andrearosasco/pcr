@@ -9,8 +9,7 @@ import platform
 # PARAMETERS ###########################################################################################################
 
 device = "cuda"
-local = "Windows" not in platform.platform()
-
+local = False
 
 @dataclass
 class DataConfig:
@@ -50,8 +49,8 @@ class ModelConfig:
     assert divmod(embed_dim, num_heads)[1] == 0
 
 
-def git_hash() -> str:
-    return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+# def git_hash() -> str:
+#     return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
 
 
 @dataclass
@@ -66,7 +65,7 @@ class TrainConfig:
     log_pcs_every = 10000
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     num_workers = 4 if local else 0
-    git = git_hash()
+    # git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"

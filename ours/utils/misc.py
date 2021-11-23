@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
+from open3d.cpu.pybind.t.geometry import RaycastingScene
+
 from utils.fps import fp_sampling
 from math import ceil
 import open3d as o3d
@@ -385,7 +387,7 @@ def check_mesh_contains(meshes, queries, max_dist=0.01):
     occupancies = []
     queries = queries.detach().cpu().numpy()
     for mesh, query in zip(meshes, queries):
-        scene = o3d.t.geometry.RaycastingScene()
+        scene = RaycastingScene()
         mesh = o3d.io.read_triangle_mesh(mesh, False)
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
         _ = scene.add_triangles(mesh)
