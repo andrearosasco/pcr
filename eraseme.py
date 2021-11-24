@@ -1,0 +1,6 @@
+pc = PointCloud()
+pc.points = Vector3dVector(partial[0].cpu())
+mesh = o3d.geometry.TriangleMesh(Vector3dVector(_[0][0].cpu()), Vector3iVector(_[1][0].cpu()))
+pc_ = PointCloud()
+pc_.points = Vector3dVector(samples[0].cpu())
+o3d.visualization.draw_geometries([mesh, pc, pc_])

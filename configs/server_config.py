@@ -27,6 +27,7 @@ class DataConfig:
     mode = 'easy'  # values: train, valid, test
     n_classes = 55 # TODO re-label classes for easy dataset
     implicit_input_dimension = 8192
+    n_samples = 10000
 
 
 @dataclass

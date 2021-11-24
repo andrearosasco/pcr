@@ -2,7 +2,7 @@ import os
 from utils.lightning import SplitProgressBar
 
 try:
-    from open3d.cuda.pybind.utility import Vector3dVector
+    from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
     from open3d.cuda.pybind.visualization import draw_geometries
     from open3d.cuda.pybind.geometry import PointCloud
 except ImportError:

@@ -106,9 +106,6 @@ class BoxNet(data.Dataset):
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
 
-        self.vis = o3d.visualization.Visualizer()
-        self.vis.create_window(visible=False)
-
         # Find the mesh
         mesh = gen_box()
         complete_path = self.output_path + os.sep + "box_{}.obj".format(idx)
@@ -176,7 +173,7 @@ class BoxNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from ours.configs.local_config import DataConfig
+    from configs.local_config import DataConfig
     from tqdm import tqdm
     from open3d.cpu.pybind.geometry import PointCloud
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
@@ -199,8 +196,6 @@ if __name__ == "__main__":
 
         coord = o3d.geometry.TriangleMesh.create_coordinate_frame(origin=[0, 0, 1.5])
         o3d.visualization.draw_geometries([pc_part, mesh, coord], window_name="Both")
-
-
 
         pc = PointCloud()
         pc.points = Vector3dVector(x[0])  # remove batch dimension
