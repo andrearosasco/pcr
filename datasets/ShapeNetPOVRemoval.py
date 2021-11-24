@@ -2,12 +2,11 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.utils.data as data
-import open3d as o3d
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation as R
 import random
 import os
-o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
+# o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 
 
 def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
@@ -22,6 +21,7 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192,
     :param mode: str, one in ["unsigned", "signed", "occupancy"]
     :return: points (N, 3), occupancies (N,)
     """
+    import open3d as o3d
     # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
     n_points_uniform = int(total * percentage_sampled)
     n_points_surface = total - n_points_uniform
@@ -72,6 +72,7 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192,
 
 
 def gen_box(min_side=0.05, max_side=0.4):
+    import open3d as o3d
     sizes = []
     for i in range(3):
         sizes.append(random.uniform(min_side, max_side))
@@ -177,6 +178,7 @@ if __name__ == "__main__":
     from tqdm import tqdm
     from open3d.cpu.pybind.geometry import PointCloud
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
+    import open3d as o3d
 
     a = DataConfig()
     a.dataset_path = Path("..", "data", "ShapeNetCore.v2")
