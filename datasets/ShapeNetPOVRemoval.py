@@ -76,12 +76,6 @@ def gen_box(min_side=0.05, max_side=0.4):
         sizes.append(random.uniform(min_side, max_side))
     cube_mesh = o3d.geometry.TriangleMesh.create_box(sizes[0], sizes[1], sizes[2])
 
-    colors = []
-    for i in range(3):
-        colors.append(random.uniform(0.0, 1.0))
-    cube_mesh.paint_uniform_color(colors)
-    cube_mesh.compute_vertex_normals()
-
     return cube_mesh
 
 
@@ -104,6 +98,7 @@ class BoxNet(data.Dataset):
         self.n_samples = config.n_samples
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
+        return 0, torch.rand(2048, 3), [np.random.rand(8, 3), np.array([[4, 7, 5], [4, 6, 7], [0, 2, 4], [2, 6, 4], [0, 1, 2], [1, 3, 2], [1, 5, 7], [1, 7, 3], [2, 3, 7], [2, 7, 6], [0, 4, 1], [1, 4, 5]])], torch.rand(8192, 3), torch.randint(0, 1, (8192,)).float()
 
         # Find the mesh
         try:
