@@ -106,7 +106,11 @@ class BoxNet(data.Dataset):
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
 
         # Find the mesh
-        mesh = gen_box()
+        try:
+            mesh = gen_box()
+        except Exception as e:
+            print("IT WAS GEN BOX")
+            print(e.__str__())
         complete_path = self.output_path + os.sep + "box_{}.obj".format(idx)
 
         while True:
@@ -116,10 +120,13 @@ class BoxNet(data.Dataset):
             # Define camera transformation and intrinsics
             #  (Camera is in the origin facing negative z, shifting it of z=1 puts it in front of the object)
             dist = 1.5
-
-            complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
-            _, pt_map = complete_pcd.hidden_point_removal([0, 0, dist], 1000)  # radius * 4
-            partial_pcd = complete_pcd.select_by_index(pt_map)
+            try:
+                complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
+                _, pt_map = complete_pcd.hidden_point_removal([0, 0, dist], 1000)  # radius * 4
+                partial_pcd = complete_pcd.select_by_index(pt_map)
+            except Exception as e:
+                print("IT WAS SAMPLE POINT REMOVAL")
+                print(e.__str__())
 
             if len(np.array(partial_pcd.points)) != 0:
                 break
@@ -138,11 +145,15 @@ class BoxNet(data.Dataset):
         mesh.scale(1 / (var * 2), center=[0, 0, 0])
 
         # Sample labeled point on the mesh
-        samples, occupancy = sample_point_cloud(mesh,
-                                                self.noise_rate,
-                                                self.percentage_sampled,
-                                                total=self.implicit_input_dimension,
-                                                mode="unsigned")
+        try:
+            samples, occupancy = sample_point_cloud(mesh,
+                                                    self.noise_rate,
+                                                    self.percentage_sampled,
+                                                    total=self.implicit_input_dimension,
+                                                    mode="unsigned")
+        except Exception as e:
+            print("IT WAS SAMPLE POINT CLOUD")
+            print(e.__str__())
 
         # Next lines bring the shape a face of the cube so that there's more space to
         # complete it. But is it okay for the input to be shifted toward -0.5 and not
