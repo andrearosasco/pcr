@@ -9,6 +9,8 @@ import open3d as o3d
 from models.HyperNetwork import HyperNetwork
 from configs.local_config import ModelConfig
 from torch import nn
+
+from utils.ChamferDistance import chamfer_distance
 from utils.misc import create_3d_grid, check_mesh_contains
 from datasets.ShapeNetPOV import ShapeNet
 from torch.utils.data import DataLoader
@@ -70,9 +72,12 @@ if __name__ == "__main__":
         label_names = {l.split()[0]: l.split()[2] for l in f.readlines()}
     precisions = {v: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] for v in label_names.values()}
     recalls = {v: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] for v in label_names.values()}
+    chamfers = {v: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] for v in label_names.values()}
 
     acc_precisions = {v: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] for v in label_names.values()}
     acc_recalls = {v: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] for v in label_names.values()}
+    acc_chamfers = {v: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] for v in label_names.values()}
+
     total = {v: 0 for v in label_names.values()}
 
     with torch.no_grad():
@@ -90,9 +95,13 @@ if __name__ == "__main__":
 
             precision = precisions[label_names[str(label.squeeze().item())]]
             recall = recalls[label_names[str(label.squeeze().item())]]
+            chamfer = chamfers[label_names[str(label.squeeze().item())]]
             acc_precision = acc_precisions[label_names[str(label.squeeze().item())]]
             acc_recall = acc_recalls[label_names[str(label.squeeze().item())]]
+            acc_chamfer = acc_chamfers[label_names[str(label.squeeze().item())]]
             total[label_names[str(label.squeeze().item())]] += 1
+
+
             thresholds = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0]
             for i, threshold in enumerate(thresholds):  # 93 - 77 - 79 - 58
 
@@ -105,7 +114,8 @@ if __name__ == "__main__":
                 if correct.shape[0] != 0:
                     precision[i] += int(torch.sum(correct).item()) / correct.shape[0]
                     recall[i] += int(torch.sum(true).item()) / torch.sum(gt).item()
-
+                    chamfer[i] += chamfer_distance(grid[:, gt.squeeze().bool(), :].detach().cuda(),
+                                      grid[:, res.squeeze().bool(), :].detach().cuda()) * 1000
 
                 res = torch.sigmoid(results[0])
                 res = torch.logical_and(res > threshold, res < 1)
@@ -116,6 +126,8 @@ if __name__ == "__main__":
                 if correct.shape[0] != 0:
                     acc_precision[i] += int(torch.sum(correct).item()) / correct.shape[0]
                     acc_recall[i] += int(torch.sum(true).item()) / torch.sum(gt).item()
+                    acc_chamfer[i] += chamfer_distance(grid[:, gt.squeeze().bool(), :].detach().cuda(),
+                                      grid[:, res.squeeze().bool(), :].detach().cuda()) * 1000
 
 
 
@@ -176,16 +188,21 @@ if __name__ == "__main__":
                 if precisions[k][i] != 0 and recalls[k][i] != 0:
                     wandb.log({f'{k}/F1': f1(precisions[k][i] / total[k], recalls[k][i] / total[k]),
                                f'{k}/Acc F1': f1(acc_precisions[k][i] / total[k], acc_recalls[k][i] / total[k]),
+                               f'{k}/Chamfer': chamfers[k][i]/total[k],
+                               f'{k}/Acc Chamfer': acc_chamfers[k][i]/total[k],
                                'Threshold': thresholds[i]})
+
 
 
         # Recall/Precision
         t_prec = [sum([p[i] for p in precisions.values()]) for i in range(10)]
         t_rec = [sum([r[i] for r in recalls.values()]) for i in range(10)]
+        t_chamfer = [sum([c[i] for c in chamfers.values()]) for i in range(10)]
         t_tot = [sum(total.values()) for i in range(10)]
 
         t_acc_prec = [sum([p[i] for p in acc_precisions.values()]) for i in range(10)]
         t_acc_rec = [sum([r[i] for r in acc_recalls.values()]) for i in range(10)]
+        t_acc_chamfer = [sum([c[i] for c in acc_chamfers.values()]) for i in range(10)]
 
         for i in range(10):
             wandb.log({'Total/Precision': t_prec[i] / t_tot[i],
@@ -194,6 +211,8 @@ if __name__ == "__main__":
                        'Total/Acc Recall': t_acc_rec[i] / t_tot[i],
                        'Total/F1': f1(t_prec[i] / t_tot[i], t_rec[i] / t_tot[i]),
                        'Total/Acc F1': f1(t_acc_prec[i] / t_tot[i], t_acc_rec[i] / t_tot[i]),
+                       'Total/Chamfer': t_chamfer[i] / t_tot[i],
+                       'Total/Acc Chamfer': t_acc_chamfer / t_tot[i],
                        'Threshold': thresholds[i]
                        })
 

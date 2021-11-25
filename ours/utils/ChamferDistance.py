@@ -57,13 +57,13 @@ def chamfer_distance_kdtree(points1, points2, give_id=False):
 
     # Get list of nearest neighbors indieces
     idx_nn_12, _ = get_nearest_neighbors_indices_batch(points1_np, points2_np)
-    idx_nn_12 = torch.LongTensor(idx_nn_12).to(points1.device)
+    idx_nn_12 = torch.LongTensor(np.array(idx_nn_12)).to(points1.device)
     # Expands it as batch_size x 1 x 3
     idx_nn_12_expand = idx_nn_12.view(batch_size, -1, 1).expand_as(points1)
 
     # Get list of nearest neighbors indieces
     idx_nn_21, _ = get_nearest_neighbors_indices_batch(points2_np, points1_np)
-    idx_nn_21 = torch.LongTensor(idx_nn_21).to(points1.device)
+    idx_nn_21 = torch.LongTensor(np.array(idx_nn_21)).to(points1.device)
     # Expands it as batch_size x T x 3
     idx_nn_21_expand = idx_nn_21.view(batch_size, -1, 1).expand_as(points2)
 
@@ -81,8 +81,6 @@ def chamfer_distance_kdtree(points1, points2, give_id=False):
 
     # Take sum
     chamfer = chamfer1 + chamfer2
-    print('Chamfer Recall ', chamfer1)
-    print('Chamfer Precision ', chamfer2)
 
     # If required, also return nearest neighbors
     if give_id:
