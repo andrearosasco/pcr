@@ -13,14 +13,7 @@ try:
 except (ModuleNotFoundError, ImportError):
     from open3d.cpu.pybind.geometry import PointCloud
     from open3d.cpu.pybind.utility import Vector3dVector
-#from pytorch3d.ops import sample_points_from_meshes
-#from pytorch3d.loss.point_mesh_distance import point_face_distance
-#from pytorch3d.renderer import look_at_view_transform, Materials, PointLights, BlendParams
 import random
-#from pytorch3d.renderer import PerspectiveCameras
-#from pytorch3d.io import load_objs_as_meshes
-#from pytorch3d.structures import Meshes
-#from pytorch3d.renderer import RasterizationSettings
 from cmath import cos
 from cmath import sin
 from math import ceil, cos, sin
@@ -87,15 +80,11 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 def chamfer(samples, predictions, meshes):
-    mesh_paths, rotations, means, vars = meshes
-    for p, r, m, v, pred in zip(mesh_paths, rotations, means, vars, predictions):
+
+    for mesh, pred in zip(meshes, predictions):
         query = samples[0, (pred > 0.5).squeeze()]
 
         scene = o3d.t.geometry.RaycastingScene()
-        mesh = o3d.io.read_triangle_mesh(p, False)
-        mesh.rotate(r.cpu().numpy())
-        mesh.translate(-m.cpu().numpy())
-        mesh.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
         _ = scene.add_triangles(mesh)
         query_points = o3d.core.Tensor(query.cpu().numpy(), dtype=o3d.core.Dtype.Float32)

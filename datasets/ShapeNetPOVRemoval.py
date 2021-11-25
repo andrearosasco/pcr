@@ -6,7 +6,6 @@ import torch.utils.data as data
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation as R
 import random
-import os
 
 
 def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
@@ -80,11 +79,8 @@ def gen_box(min_side=0.05, max_side=0.4):
 
 
 class BoxNet(data.Dataset):
-    def __init__(self, config, mode="easy/train", overfit_mode=False):
-        self.mode = mode
-        self.overfit_mode = overfit_mode
+    def __init__(self, config, n_samples):
         #  Backbone Input
-        self.data_root = Path(config.dataset_path)
         self.partial_points = config.partial_points
         self.multiplier_complete_sampling = config.multiplier_complete_sampling
 
@@ -94,19 +90,11 @@ class BoxNet(data.Dataset):
         self.implicit_input_dimension = config.implicit_input_dimension
 
         # Synthetic dataset
-        self.output_path = ".." + os.sep + "synthetic_boxes"
-        self.n_samples = config.n_samples
+        self.n_samples = n_samples
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
-        return 0, torch.rand(2048, 3), [np.random.rand(8, 3), np.array([[4, 7, 5], [4, 6, 7], [0, 2, 4], [2, 6, 4], [0, 1, 2], [1, 3, 2], [1, 5, 7], [1, 7, 3], [2, 3, 7], [2, 7, 6], [0, 4, 1], [1, 4, 5]])], torch.rand(8192, 3), torch.randint(0, 1, (8192,)).float()
-
         # Find the mesh
-        try:
-            mesh = gen_box()
-        except Exception as e:
-            print("IT WAS GEN BOX")
-            print(e.__str__())
-        complete_path = self.output_path + os.sep + "box_{}.obj".format(idx)
+        mesh = gen_box()
 
         while True:
             rotation = R.random().as_matrix()
@@ -115,13 +103,9 @@ class BoxNet(data.Dataset):
             # Define camera transformation and intrinsics
             #  (Camera is in the origin facing negative z, shifting it of z=1 puts it in front of the object)
             dist = 1.5
-            try:
-                complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
-                _, pt_map = complete_pcd.hidden_point_removal([0, 0, dist], 1000)  # radius * 4
-                partial_pcd = complete_pcd.select_by_index(pt_map)
-            except Exception as e:
-                print("IT WAS SAMPLE POINT REMOVAL")
-                print(e.__str__())
+            complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
+            _, pt_map = complete_pcd.hidden_point_removal([0, 0, dist], 1000)  # radius * 4
+            partial_pcd = complete_pcd.select_by_index(pt_map)
 
             if len(np.array(partial_pcd.points)) != 0:
                 break
@@ -140,21 +124,11 @@ class BoxNet(data.Dataset):
         mesh.scale(1 / (var * 2), center=[0, 0, 0])
 
         # Sample labeled point on the mesh
-        try:
-            samples, occupancy = sample_point_cloud(mesh,
-                                                    self.noise_rate,
-                                                    self.percentage_sampled,
-                                                    total=self.implicit_input_dimension,
-                                                    mode="unsigned")
-        except Exception as e:
-            print("IT WAS SAMPLE POINT CLOUD")
-            print(e.__str__())
-
-        # Next lines bring the shape a face of the cube so that there's more space to
-        # complete it. But is it okay for the input to be shifted toward -0.5 and not
-        # centered on the origin?
-        #
-        # normalized[..., 2] = normalized[..., 2] + (-0.5 - min(normalized[..., 2]))
+        samples, occupancy = sample_point_cloud(mesh,
+                                                self.noise_rate,
+                                                self.percentage_sampled,
+                                                total=self.implicit_input_dimension,
+                                                mode="unsigned")
 
         partial_pcd = torch.FloatTensor(partial_pcd)
 
@@ -164,7 +138,7 @@ class BoxNet(data.Dataset):
             ids = perm[:self.partial_points]
             partial_pcd = partial_pcd[ids]
         else:
-            print(f'Warning: had to pad the partial pcd {complete_path} - points {partial_pcd.shape[0]} added {self.partial_points - partial_pcd.shape[0]}')
+            print(f'Warning: had to pad the partial pcd - points {partial_pcd.shape[0]} added {self.partial_points - partial_pcd.shape[0]}')
             diff = self.partial_points - partial_pcd.shape[0]
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
 

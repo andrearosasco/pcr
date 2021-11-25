@@ -16,7 +16,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
-from datasets.ShapeNetPOV import ShapeNet
+from datasets.ShapeNetPOVRemoval import BoxNet
 from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 from tqdm import tqdm
@@ -68,23 +68,21 @@ class HyperNetwork(pl.LightningModule):
         self.avg_chamfer = AverageMeter()
 
     def prepare_data(self):
-        self.training_set = ShapeNet(DataConfig,
-                                     mode=f"{DataConfig.mode}/train",
-                                     overfit_mode=TrainConfig.overfit_mode)
+        self.training_set = BoxNet(DataConfig,
+                                   DataConfig.train_samples)
 
-        self.valid_set = ShapeNet(DataConfig,
-                                  mode=f"{DataConfig.mode}/valid",
-                                  overfit_mode=TrainConfig.overfit_mode)
+        self.valid_set = BoxNet(DataConfig,
+                                DataConfig.val_samples)
 
     def train_dataloader(self):
         dl = DataLoader(self.training_set,
-                          batch_size=TrainConfig.mb_size,
-                          shuffle=True,
-                          drop_last=True,
-                          num_workers=TrainConfig.num_workers,
-                          pin_memory=True,
-                          worker_init_fn=seed_worker,
-                          generator=generator)
+                        batch_size=TrainConfig.mb_size,
+                        shuffle=True,
+                        drop_last=True,
+                        num_workers=TrainConfig.num_workers,
+                        pin_memory=True,
+                        worker_init_fn=seed_worker,
+                        generator=generator)
 
         print(len(self.training_set), '/', TrainConfig.mb_size, '=', len(dl))
         return dl
@@ -100,11 +98,7 @@ class HyperNetwork(pl.LightningModule):
     def forward(self, partial, object_id=None):
         samples = create_3d_grid(batch_size=partial.shape[0]).to(TrainConfig.device)
 
-        if object_id is not None:
-            one_hot = torch.zeros((partial.shape[0], DataConfig.n_classes), dtype=torch.float).to(partial.device)
-            one_hot[torch.arange(0, partial.shape[0]), object_id] = 1.
-
-        fast_weights, _ = self.backbone(partial, object_id=one_hot)
+        fast_weights, _ = self.backbone(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
         return prediction
@@ -120,12 +114,7 @@ class HyperNetwork(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         label, partial, complete, samples, occupancy, _ = batch
 
-        one_hot = None
-        if ModelConfig.use_object_id:
-            one_hot = torch.zeros((batch.shape[0], DataConfig.n_classes), dtype=torch.float).to(batch.device)
-            one_hot[torch.arange(0, batch.shape[0]), label] = 1.
-
-        fast_weights, _ = self.backbone(partial, object_id=one_hot)
+        fast_weights, _ = self.backbone(partial)
         out = self.sdf(samples, fast_weights)
 
         loss = F.binary_cross_entropy_with_logits(out, occupancy.unsqueeze(-1))
@@ -158,7 +147,6 @@ class HyperNetwork(pl.LightningModule):
             self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
             self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
 
-
         occupancy = check_mesh_contains(mesh, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
         occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
 
@@ -175,8 +163,10 @@ class HyperNetwork(pl.LightningModule):
 
     def validation_step_end(self, output):
         pred, trgt, mesh = output['out'], output['target'].int(), output['mesh']
-        self.accuracy.update(pred, trgt), self.precision_.update(pred, trgt), self.avg_chamfer.update(chamfer(self.grid, pred, mesh))
-        self.recall.update(pred, trgt), self.f1.update(pred, trgt), self.avg_loss.update(F.binary_cross_entropy(pred, trgt.float()))
+        self.accuracy.update(pred, trgt), self.precision_.update(pred, trgt), self.avg_chamfer.update(
+            chamfer(self.grid, pred, mesh))
+        self.recall.update(pred, trgt), self.f1.update(pred, trgt), self.avg_loss.update(
+            F.binary_cross_entropy(pred, trgt.float()))
 
         l = output['label'].item()
 
@@ -195,30 +185,30 @@ class HyperNetwork(pl.LightningModule):
     #     self.log('valid/chamfer', self.avg_chamfer)
     #     self.log('valid/loss', self.avg_loss)
 
-        # output = output[0]
-        # pred, trgt, mesh = output['out'][0], output['target'][0], output['mesh'][0]
-        #
-        # # all positive predictions with labels for true positive and false positives
-        # precision_pc = torch.cat((self.grid[0], trgt), dim=-1).detach().cpu().numpy()
-        # precision_pc = precision_pc[(pred.cpu().numpy() == 1).squeeze()]
-        #
-        # # all true points with labels for true positive and false negatives
-        # recall_pc = torch.cat((self.grid[0], pred), dim=-1).detach().cpu().numpy()
-        # recall_pc = recall_pc[(trgt.cpu().numpy() == 1.).squeeze()]
-        #
-        # complete = o3d.io.read_triangle_mesh(mesh, False)
-        #
-        # complete = complete.sample_points_uniformly(10000)
-        # complete = np.array(complete.points)
-        #
-        # partial = output['partial']
-        #
-        # self.trainer.logger.experiment[0].log({
-        #     'precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
-        #     'recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
-        #     'partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'}),
-        #     'complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
-        # })
+    # output = output[0]
+    # pred, trgt, mesh = output['out'][0], output['target'][0], output['mesh'][0]
+    #
+    # # all positive predictions with labels for true positive and false positives
+    # precision_pc = torch.cat((self.grid[0], trgt), dim=-1).detach().cpu().numpy()
+    # precision_pc = precision_pc[(pred.cpu().numpy() == 1).squeeze()]
+    #
+    # # all true points with labels for true positive and false negatives
+    # recall_pc = torch.cat((self.grid[0], pred), dim=-1).detach().cpu().numpy()
+    # recall_pc = recall_pc[(trgt.cpu().numpy() == 1.).squeeze()]
+    #
+    # complete = o3d.io.read_triangle_mesh(mesh, False)
+    #
+    # complete = complete.sample_points_uniformly(10000)
+    # complete = np.array(complete.points)
+    #
+    # partial = output['partial']
+    #
+    # self.trainer.logger.experiment[0].log({
+    #     'precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'}),
+    #     'recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'}),
+    #     'partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'}),
+    #     'complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})
+    # })
 
 
 def print_memory():
@@ -261,13 +251,14 @@ if __name__ == '__main__':
     # aux = {}
     # aux['state_dict'] = checkpoint
     # torch.save(aux, './checkpoint/best.ptc')
-    model = HyperNetwork.load_from_checkpoint('./checkpoint/best.ptc', config=server_config.ModelConfig,)
+    model = HyperNetwork.load_from_checkpoint('./checkpoint/best.ptc', config=server_config.ModelConfig, )
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
         dirpath='checkpoint',
         filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
         auto_insert_metric_name=False)
+
 
     class LitProgressBar(ProgressBar):
 

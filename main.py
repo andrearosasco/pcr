@@ -81,13 +81,9 @@ class HyperNetwork(pl.LightningModule):
     #             nn.init.constant_(m.bias, 0)
 
     def prepare_data(self):
-        self.training_set = BoxNet(DataConfig,
-                                   mode=f"{DataConfig.mode}/train",
-                                   overfit_mode=TrainConfig.overfit_mode)
+        self.training_set = BoxNet(DataConfig, DataConfig.train_samples)
 
-        self.valid_set = BoxNet(DataConfig,
-                                mode=f"{DataConfig.mode}/valid",
-                                overfit_mode=TrainConfig.overfit_mode)
+        self.valid_set = BoxNet(DataConfig, DataConfig.val_samples)
 
     def train_dataloader(self):
         dl = DataLoader(self.training_set,
@@ -110,14 +106,10 @@ class HyperNetwork(pl.LightningModule):
             num_workers=TrainConfig.num_workers,
             pin_memory=True)
 
-    def forward(self, partial, object_id=None):
-        samples = create_3d_grid(batch_size=partial.shape[0]).to(TrainConfig.device)
+    def forward(self, partial, object_id=None, step=0.04):
+        samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
 
-        if object_id is not None:
-            one_hot = torch.zeros((partial.shape[0], DataConfig.n_classes), dtype=torch.float).to(partial.device)
-            one_hot[torch.arange(0, partial.shape[0]), object_id] = 1.
-
-        fast_weights, _ = self.backbone(partial, object_id=one_hot)
+        fast_weights, _ = self.backbone(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
         return prediction
@@ -292,6 +284,8 @@ def chamfer(samples, predictions, meshes):
 
 
 if __name__ == '__main__':
+    print(TrainConfig.num_workers)
+
     model = HyperNetwork(ModelConfig)
 
     config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if

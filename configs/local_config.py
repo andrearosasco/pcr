@@ -67,7 +67,7 @@ class TrainConfig:
     log_metrics_every = 10
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     num_workers = 4  # TODO PUT 4
-    git = git_hash()
+    git = ""  # git_hash()
     optimizer = torch.optim.AdamW
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
