@@ -8,20 +8,23 @@ from configs.server_config import ModelConfig, DataConfig
 from datasets.ShapeNetPOVRemoval import BoxNet
 from main import HyperNetwork
 import torch
+import numpy as np
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 
 device = "cuda"
 
 
-def fp_sampling(points, num):
+def fp_sampling(points, num, starting_point=None):
     batch_size = points.shape[0]
-    D = cdist(points[:, 0].unsqueeze(1), points).squeeze(1)
-    # By default, takes the first point in the list to be the
-    # first point in the permutation, but could be random
+    # If no starting_point is provided, the starting point is the first point of points
+    if starting_point is None:
+        starting_point = points[:, 0].unsqueeze(1)
+    D = cdist(starting_point, points).squeeze(1)
+
     perm = torch.zeros((batch_size, num), dtype=torch.int32, device=points.device)
     ds = D
-    for i in range(1, num):
+    for i in range(0, num):
         idx = torch.argmax(ds, dim=1)
         perm[:, i] = idx
         ds = torch.minimum(ds, cdist(points[torch.arange(batch_size), idx].unsqueeze(1), points).squeeze())
@@ -35,7 +38,7 @@ if __name__ == '__main__':
     model = model.to(device)
     model.eval()
 
-    valid_set = BoxNet(DataConfig, DataConfig.val_samples)
+    valid_set = BoxNet(DataConfig, 10000)
 
     for sample in valid_set:
 
@@ -64,10 +67,46 @@ if __name__ == '__main__':
 
         pred_pc = PointCloud()
         pred_pc.points = Vector3dVector(selected)
-        # draw_geometries([pred_pc, mesh])
-        draw_geometries([pred_pc])
+        colors = np.array([0, 255, 0])[None, ...].repeat(selected.shape[0], axis=0)
+        pred_pc.colors = Vector3dVector(colors)
 
         # Create mesh from point cloud
+        hull, _ = pred_pc.compute_convex_hull()
+        # o3d.visualization.draw_geometries([hull])
+
+        convex_pc = PointCloud()
+        convex_pc.points = hull.vertices
+
+        tetra_mesh, pt_map = o3d.geometry.TetraMesh.create_from_point_cloud(convex_pc)
+        for alpha in [0.5]:
+            print(f"alpha={alpha:.3f}")
+            rec_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(
+                convex_pc, alpha, tetra_mesh, pt_map)
+            rec_mesh.compute_vertex_normals()
+            print("REC:", rec_mesh.is_watertight())
+            print("ORIGINAL", mesh.is_watertight())
+            o3d.visualization.draw_geometries([rec_mesh, mesh.translate([1, 1, 1]), part_pc.translate([1, 1, 1])], mesh_show_back_face=True)
+
+        # TODO START NOT BAD, BUT WE HAVE ONLY 4 VERTICES
+        # points_tensor = torch.FloatTensor(np.array(pred_pc.points)).unsqueeze(0)
+        # first_vertex_id = fp_sampling(points_tensor, 1, starting_point=torch.FloatTensor([[0, 0, 0]]))
+        # first_vertex_id = first_vertex_id[0][0].item()  # Get int from tensor
+        # first_vertex = points_tensor[:, first_vertex_id, :]
+        #
+        # colors = np.array(pred_pc.colors)
+        # colors[first_vertex_id] = np.array([255, 0, 0])
+        # pred_pc.colors = Vector3dVector(colors)
+        #
+        # # o3d.visualization.draw_geometries([pred_pc])
+        #
+        # vertices = fp_sampling(points_tensor, 3, starting_point=first_vertex)
+        # vertices = np.array(vertices[0])
+        # colors = np.array(pred_pc.colors)
+        # colors[vertices] = np.array([255, 0, 0])
+        # pred_pc.colors = Vector3dVector(colors)
+        #
+        # o3d.visualization.draw_geometries([pred_pc])
+        # TODO START NOT BAD, BUT WE HAVE ONLY 4 VERTICES
 
         # TODO NOT BAD, BUT STILL NOT WATERTIGHT
         # tetra_mesh, pt_map = o3d.geometry.TetraMesh.create_from_point_cloud(pred_pc)
