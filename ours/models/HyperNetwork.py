@@ -3,17 +3,22 @@ import random
 import numpy as np
 import torch
 import wandb
+try:
+    from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
+except ModuleNotFoundError:
+    from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
 from pytorch_lightning import LightningModule
 from torch import nn
 from torch.nn.init import trunc_normal_
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-from torchmetrics import AverageMeter, F1, Recall, Precision, Accuracy
+from torchmetrics import MeanMetric, F1, Recall, Precision, Accuracy
 import open3d as o3d
 
 from configs import DataConfig, ModelConfig, TrainConfig
-from datasets.ShapeNetPOVRemoval import ShapeNet
-from utils.misc import check_mesh_contains, create_3d_grid, chamfer
+from datasets.ShapeNetPOVRemoval import ShapeNet, collate
+from utils.metrics import chamfer_distance
+from utils.misc import check_mesh_contains, create_3d_grid
 from .Transformer import PCTransformer
 
 
@@ -57,8 +62,8 @@ class HyperNetwork(LightningModule):
         self.precision_ = Precision()
         self.recall = Recall()
         self.f1 = F1()
-        self.avg_loss = AverageMeter()
-        self.avg_chamfer = AverageMeter()
+        self.avg_loss = MeanMetric()
+        self.avg_chamfer = MeanMetric()
 
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
@@ -72,12 +77,10 @@ class HyperNetwork(LightningModule):
 
     def prepare_data(self):
         self.training_set = ShapeNet(DataConfig,
-                                     mode=f"{DataConfig.mode}/train",
-                                     overfit_mode=TrainConfig.overfit_mode)
+                                     mode=f"{DataConfig.mode}/train")
 
         self.valid_set = ShapeNet(DataConfig,
-                                  mode=f"{DataConfig.mode}/valid",
-                                  overfit_mode=TrainConfig.overfit_mode)
+                                  mode=f"{DataConfig.mode}/valid")
 
     def train_dataloader(self):
         dl = DataLoader(self.training_set,
@@ -87,6 +90,7 @@ class HyperNetwork(LightningModule):
                         num_workers=TrainConfig.num_workers,
                         pin_memory=True,
                         worker_init_fn=seed_worker,
+                        collate_fn=collate,
                         generator=generator)
 
         return dl
@@ -98,6 +102,7 @@ class HyperNetwork(LightningModule):
             batch_size=TrainConfig.test_mb_size,
             drop_last=False,
             num_workers=TrainConfig.num_workers,
+            collate_fn=collate,
             pin_memory=True)
 
     def forward(self, partial, object_id=None):
@@ -153,12 +158,17 @@ class HyperNetwork(LightningModule):
         self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
 
     def validation_step(self, batch, batch_idx):
-        label, partial, mesh, _, _ = batch
+        label, partial, meshes, _, _ = batch
+
+        verts, tris = meshes
+        meshes_list = []
+        for vert, tri in zip(verts, tris):
+            meshes_list.append(o3d.geometry.TriangleMesh(Vector3dVector(vert.cpu()), Vector3iVector(tri.cpu())))
 
         self.grid = create_3d_grid(batch_size=label.shape[0],
                                    step=TrainConfig.grid_res_step).to(TrainConfig.device)
 
-        occupancy = check_mesh_contains(mesh, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
+        occupancy = check_mesh_contains(meshes_list, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
         occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
 
         one_hot = None
@@ -170,11 +180,19 @@ class HyperNetwork(LightningModule):
         out = self.sdf(self.grid, fast_weights)
 
         return {'out': torch.sigmoid(out).detach().cpu(), 'target': occupancy.detach().cpu(),
-                'mesh': mesh, 'partial': partial.detach().cpu(), 'label': label.detach().cpu()}
+                'mesh': meshes_list, 'partial': partial.detach().cpu(), 'label': label.detach().cpu()}
 
     def validation_step_end(self, output):
-        pred, trgt, mesh = output['out'], output['target'].int(), output['mesh']
-        self.accuracy(pred, trgt), self.precision_(pred, trgt), self.avg_chamfer(chamfer(self.grid, pred, mesh))
+        pred, trgt = output['out'], output['target'].int()
+
+        for i, mesh in enumerate(output['mesh']):
+            query = self.grid[i, (pred[i] > 0.5).squeeze()]
+            gt = mesh.sample_points_uniformly(query.shape[1])
+            cf = chamfer_distance(torch.tensor(gt.points, device=TrainConfig.device).unsqueeze(0),
+                                   query.detach().cuda().unsqueeze(0)) * 1000
+            self.avg_chamfer(cf)
+
+        self.accuracy(pred, trgt), self.precision_(pred, trgt)
         self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
 
         return output
@@ -191,7 +209,7 @@ class HyperNetwork(LightningModule):
 
         for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
-            out, trgt, mesh = batch['out'][-1], batch['target'][-1], batch['mesh'][0]
+            out, trgt, mesh = batch['out'][-1], batch['target'][-1], batch['mesh'][-1]
             pred = out > 0.5
 
             # all positive predictions with labels for true positive and false positives
@@ -210,15 +228,12 @@ class HyperNetwork(LightningModule):
             recall_pc = torch.cat((self.grid[0].cpu(), colors), dim=-1).detach().cpu().numpy()
             recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
-            complete = o3d.io.read_triangle_mesh(mesh[-1], False)
-
-            complete = complete.sample_points_uniformly(10000)
+            complete = mesh.sample_points_uniformly(10000)
             complete = np.array(complete.points)
 
             partial = batch['partial'][-1]
             partial = np.array(partial.squeeze())
 
-            # TODO Fix partial and Add colors
             self.trainer.logger.experiment[0].log(
                 {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
             self.trainer.logger.experiment[0].log(
@@ -227,7 +242,6 @@ class HyperNetwork(LightningModule):
                 {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
             self.trainer.logger.experiment[0].log(
                 {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
-
 
 
 class BackBone(nn.Module):

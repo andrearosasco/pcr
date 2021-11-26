@@ -81,8 +81,6 @@ def chamfer_distance_kdtree(points1, points2, give_id=False):
 
     # Take sum
     chamfer = chamfer1 + chamfer2
-    print('Chamfer Recall ', chamfer1)
-    print('Chamfer Precision ', chamfer2)
 
     # If required, also return nearest neighbors
     if give_id:

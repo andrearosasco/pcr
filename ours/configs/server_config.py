@@ -63,7 +63,7 @@ def git_hash() -> str:
 class TrainConfig:
     device = device
     visible_dev = '0'
-    lr = 1e-4
+    lr = 1e-5
     wd = 0.0
     mb_size = 64
     test_mb_size = 32
@@ -74,7 +74,7 @@ class TrainConfig:
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
     #   dataset can lead to OOM errors
-    num_workers = 20
+    num_workers = 0
     git = git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss

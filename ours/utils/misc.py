@@ -476,13 +476,8 @@ def create_3d_grid(min_value=-0.5, max_value=0.5, step=0.04, batch_size=1):
 def check_mesh_contains(meshes, queries, max_dist=0.01):
     occupancies = []
     queries = queries.detach().cpu().numpy()
-    mesh_paths, rotations, means, vars = meshes
-    for p, r, m, v, query in zip(mesh_paths, rotations, means, vars, queries):
+    for mesh, query in zip(meshes, queries):
         scene = o3d.t.geometry.RaycastingScene()
-        mesh = o3d.io.read_triangle_mesh(p, False)
-        mesh.rotate(r.cpu().numpy())
-        mesh.translate(-m.cpu().numpy())
-        mesh.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
         _ = scene.add_triangles(mesh)
         query_points = o3d.core.Tensor(query, dtype=o3d.core.Dtype.Float32)

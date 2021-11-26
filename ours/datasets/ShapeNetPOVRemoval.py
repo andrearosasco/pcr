@@ -6,6 +6,7 @@ import torch
 import torch.utils.data as data
 import open3d as o3d
 from torch.utils.data import DataLoader
+from torch.utils.data.dataloader import default_collate
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from utils.misc import sample_point_cloud, create_cube
@@ -13,9 +14,8 @@ from scipy.spatial.transform import Rotation as R
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="easy/train", overfit_mode=False):
+    def __init__(self, config, mode):
         self.mode = mode
-        self.overfit_mode = overfit_mode
         #  Backbone Input
         self.data_root = Path(config.dataset_path)
         self.partial_points = config.partial_points
@@ -105,10 +105,22 @@ class ShapeNet(data.Dataset):
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
 
-        return label, partial_pcd, [np.array(mesh.vertices), np.array(mesh.triangles)], samples, occupancy
+        mesh = [torch.tensor(np.array(mesh.vertices)), torch.tensor(np.array(mesh.triangles))]
+        return label, partial_pcd, mesh, samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)
+
+
+def collate(batch):
+    transposed = zip(*batch)
+    out = []
+    for samples in transposed:
+        if isinstance(samples[0], list):
+            out.append(list(zip(*samples)))
+        else:
+            out.append(default_collate(samples))
+    return out
 
 
 if __name__ == "__main__":

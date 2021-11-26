@@ -31,7 +31,7 @@ import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
 from datasets.ShapeNetPOVRemoval import ShapeNet
-from models.HyperNetwork import BackBone, ImplicitFunction
+from models.HyperNetwork import HyperNetwork
 import torch
 from tqdm import tqdm
 import copy
@@ -58,10 +58,6 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 generator = torch.Generator()
 generator.manual_seed(TrainConfig.seed)
-
-
-
-
 
 
 if __name__ == '__main__':
