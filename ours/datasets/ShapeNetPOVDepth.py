@@ -86,6 +86,13 @@ class ShapeNet(data.Dataset):
         #     cv2.waitKey(0)
         # # TODO Tests END
 
+        depth = np.array(depth)
+        for m in depth.shape[0]:
+            for n in depth.shape[1]:
+                z = depth[m][n]
+                sigma = 0.001063 + 0.0007278*z + 0.003949*(z**2)
+                depth[m][n] = z + np.random.normal(0, sigma, 1)
+
         # Generate the partial point cloud
         depth_image = o3d.geometry.Image(depth)
         partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image, camera_parameters.intrinsic)
