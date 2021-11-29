@@ -48,6 +48,13 @@ if __name__ == '__main__':
 
         mesh = o3d.geometry.TriangleMesh(Vector3dVector(verts), Vector3iVector(tris))
 
+        # TODO START REMOVE DEBUG
+        partial_pc = PointCloud()
+        partial_pc.points = Vector3dVector(np.array(partial))
+        coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
+        o3d.visualization.draw_geometries([partial_pc, coord])
+        # TODO END REMOVE DEBUG
+
         partial = partial.unsqueeze(0)
         partial = partial.to(device)
 
