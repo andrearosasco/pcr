@@ -15,6 +15,9 @@ from utils.misc import create_3d_grid
 device = "cuda"
 
 
+# TODO put presentation on teams, do video where I personally test model trained on AMI
+
+
 def fp_sampling(points, num, starting_point=None):
     batch_size = points.shape[0]
     # If no starting_point is provided, the starting point is the first point of points
@@ -68,18 +71,18 @@ if __name__ == '__main__':
     model.eval()
     while True:
         rgb, depth = icub.read()
-        # cv2.imshow('RGB', rgb)  # TODO VISUALIZE DEBUG
-        # cv2.imshow('Depth', depth)  # TODO VISUALIZE DEBUG
+        cv2.imshow('RGB', rgb)  # TODO VISUALIZE DEBUG
+        cv2.imshow('Depth', depth)  # TODO VISUALIZE DEBUG
 
         # Get only red part
         rgb_mask = rgb[..., 2] == 102  # Red is the last dimension
         rgb_mask = rgb_mask.astype(float) * 255
-        # cv2.imshow('Mask', rgb_mask)  # TODO VISUALIZE DEBUG
+        cv2.imshow('Mask', rgb_mask)  # TODO VISUALIZE DEBUG
 
         # Get only depth of the box
         filtered_depth = np.where(rgb_mask, depth, 0.)
         filtered_depth_img = filtered_depth.astype(float) * 255
-        # cv2.imshow('Filtered Depth', filtered_depth_img)  # TODO VISUALIZE DEBUG
+        cv2.imshow('Filtered Depth', filtered_depth_img)  # TODO VISUALIZE DEBUG
 
         # Convert depth image to Point Cloud
         fx = fy = 343.12110728152936
@@ -107,10 +110,12 @@ if __name__ == '__main__':
 
         partial_pcd = PointCloud()
         partial_pcd.points = Vector3dVector(partial)
+        colors = np.array([0, 255, 0])[None, ...].repeat(partial.shape[0], axis=0)
+        partial_pcd.colors = Vector3dVector(colors)
 
         # TODO START REMOVE DEBUG
         coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
-        o3d.visualization.draw_geometries([partial_pcd, coord])
+        o3d.visualization.draw_geometries([partial_pcd])
         # TODO END REMOVE DEBUG
 
         # Inference
@@ -128,10 +133,12 @@ if __name__ == '__main__':
         partial = partial.squeeze(0).detach().cpu().numpy()
         part_pc = PointCloud()
         part_pc.points = Vector3dVector(partial)
+        colors = np.array([0, 255, 0])[None, ...].repeat(partial.shape[0], axis=0)
+        part_pc.colors = Vector3dVector(colors)
 
         pred_pc = PointCloud()
         pred_pc.points = Vector3dVector(selected)
-        colors = np.array([0, 255, 0])[None, ...].repeat(selected.shape[0], axis=0)
+        colors = np.array([0, 0, 255])[None, ...].repeat(selected.shape[0], axis=0)
         pred_pc.colors = Vector3dVector(colors)
 
         o3d.visualization.draw_geometries([pred_pc, part_pc])
@@ -155,6 +162,11 @@ if __name__ == '__main__':
             # print("ORIGINAL", mesh.is_watertight())
             # o3d.visualization.draw_geometries([rec_mesh, mesh.translate([1, 1, 1]), part_pc.translate([1, 1, 1])], mesh_show_back_face=True)
             o3d.visualization.draw_geometries([rec_mesh, part_pc], mesh_show_back_face=True)
+
+        #  Create grasping
+        rec_pc = rec_mesh.sample_points_uniformly(number_of_points=10000)
+        rec_pc.estimate_normals()
+        o3d.visualization.draw_geometries([rec_pc])
 
         key = cv2.waitKey(1) & 0xFF
 
