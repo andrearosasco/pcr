@@ -71,18 +71,18 @@ if __name__ == '__main__':
     model.eval()
     while True:
         rgb, depth = icub.read()
-        cv2.imshow('RGB', rgb)  # TODO VISUALIZE DEBUG
-        cv2.imshow('Depth', depth)  # TODO VISUALIZE DEBUG
+        # cv2.imshow('RGB', rgb)  # TODO VISUALIZE DEBUG
+        # cv2.imshow('Depth', depth)  # TODO VISUALIZE DEBUG
 
         # Get only red part
         rgb_mask = rgb[..., 2] == 102  # Red is the last dimension
         rgb_mask = rgb_mask.astype(float) * 255
-        cv2.imshow('Mask', rgb_mask)  # TODO VISUALIZE DEBUG
+        # cv2.imshow('Mask', rgb_mask)  # TODO VISUALIZE DEBUG
 
         # Get only depth of the box
         filtered_depth = np.where(rgb_mask, depth, 0.)
         filtered_depth_img = filtered_depth.astype(float) * 255
-        cv2.imshow('Filtered Depth', filtered_depth_img)  # TODO VISUALIZE DEBUG
+        # cv2.imshow('Filtered Depth', filtered_depth_img)  # TODO VISUALIZE DEBUG
 
         # Convert depth image to Point Cloud
         fx = fy = 343.12110728152936
@@ -114,8 +114,8 @@ if __name__ == '__main__':
         partial_pcd.colors = Vector3dVector(colors)
 
         # TODO START REMOVE DEBUG
-        coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
-        o3d.visualization.draw_geometries([partial_pcd])
+        # coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
+        # o3d.visualization.draw_geometries([partial_pcd])
         # TODO END REMOVE DEBUG
 
         # Inference
@@ -141,13 +141,13 @@ if __name__ == '__main__':
         colors = np.array([0, 0, 255])[None, ...].repeat(selected.shape[0], axis=0)
         pred_pc.colors = Vector3dVector(colors)
 
-        o3d.visualization.draw_geometries([pred_pc, part_pc])
+        # o3d.visualization.draw_geometries([pred_pc, part_pc])  # TODO VISUALIZE DEBUG
 
         # continue
 
         # Create mesh from point cloud
         hull, _ = pred_pc.compute_convex_hull()
-        # o3d.visualization.draw_geometries([hull])
+        # o3d.visualization.draw_geometries([hull])  # TODO VISUALIZE DEBUG
 
         convex_pc = PointCloud()
         convex_pc.points = hull.vertices
@@ -161,12 +161,26 @@ if __name__ == '__main__':
             print("REC:", rec_mesh.is_watertight())
             # print("ORIGINAL", mesh.is_watertight())
             # o3d.visualization.draw_geometries([rec_mesh, mesh.translate([1, 1, 1]), part_pc.translate([1, 1, 1])], mesh_show_back_face=True)
-            o3d.visualization.draw_geometries([rec_mesh, part_pc], mesh_show_back_face=True)
+            # o3d.visualization.draw_geometries([rec_mesh, part_pc], mesh_show_back_face=True)  # TODO VISUALIZE DEBUG
 
         #  Create grasping
         rec_pc = rec_mesh.sample_points_uniformly(number_of_points=10000)
         rec_pc.estimate_normals()
-        o3d.visualization.draw_geometries([rec_pc])
+        # o3d.visualization.draw_geometries([rec_pc])  # TODO VISUALIZE DEBUG
+
+        # RUN RANSAC
+        centers = []
+        for i in range(8):
+            points = rec_pc.segment_plane(0.04, 10, 100)
+            points_list = np.array(points[1])
+            plane_points = np.array(rec_pc.points)[points_list]
+
+            centers.append(np.mean(plane_points, axis=0))
+
+            rec_pc = rec_pc.select_by_index(points[1], invert=True)
+
+            o3d.visualization.draw_geometries([rec_pc])  # TODO VISUALIZE DEBUG
+
 
         key = cv2.waitKey(1) & 0xFF
 
