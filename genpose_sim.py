@@ -94,6 +94,7 @@ class FromPartialToPose:
 
     def reconstruct_point_cloud(self, partial):
         """
+        Given a partial point cloud, it reconstructs it
         Args:
             partial: np.array(N, 3)
 
@@ -118,10 +119,13 @@ class FromPartialToPose:
 
         return pred_pc
 
-    def find_poses(self, pc):
+    def find_poses(self, pc, mult_res=4, n_points=10, iterations=100, debug=False):
         """
         Get a complete point cloud and return the a point cloud with good grasping spot
         Args:
+            iterations: number of iterations to do in segment plane
+            n_points: number of points to use in each iteration of segment plane
+            mult_res: multiplier of grid resolution to use in segment plane
             pc: Complete Point Cloud
 
         Returns:
@@ -131,14 +135,15 @@ class FromPartialToPose:
         centers = []
         aux_pc = PointCloud(pc)
         for i in range(6):
-            points = aux_pc.segment_plane(self.grid_res*4, 10, 100)  # TODO FINE TUNE THIS PARAMETERS
+            points = aux_pc.segment_plane(self.grid_res*mult_res, n_points, iterations)
             points_list = np.array(points[1])
             plane_points = np.array(aux_pc.points)[points_list]
 
             centers.append(np.mean(plane_points, axis=0))
 
             aux_pc = aux_pc.select_by_index(points[1], invert=True)
-            # o3d.visualization.draw_geometries([aux_pc])  # TODO VISUALIZE DEBUG
+            if debug:
+                o3d.visualization.draw_geometries([aux_pc])
 
         # Get closest point from sampled point cloud for every center
         true_centers = []
@@ -181,12 +186,12 @@ if __name__ == '__main__':
 
     # Setting up environment
     icub = iCubGazebo()
-    model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
-    model = model.to(device)
-    model.eval()
+    m = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
+    m = m.to(device)
+    m.eval()
 
     # TODO START TRY TO PUT CLASS
-    generator = FromPartialToPose(model, res)
+    generator = FromPartialToPose(m, res)
     # TODO END START TRY
 
     # Main loop
@@ -208,6 +213,9 @@ if __name__ == '__main__':
         # cv2.imshow('Depth', depth)  # TODO VISUALIZE DEBUG
         # cv2.imshow('Mask', rgb_mask)  # TODO VISUALIZE DEBUG
         # cv2.imshow('Filtered Depth', filtered_depth_img)  # TODO VISUALIZE DEBUG
+        # key = cv2.waitKey(1) & 0xFF  # TODO VISUALIZE DEBUG
+        # if key == ord("q"):  # TODO VISUALIZE DEBUG
+        #     break  # TODO VISUALIZE DEBUG
 
         # Convert depth image to Point Cloud
         fx = fy = 343.12110728152936
@@ -218,126 +226,22 @@ if __name__ == '__main__':
         # o3d.visualization.draw_geometries([pc])  # TODO VISUALIZE DEBUG
 
         # Sample Point Cloud
-        partial = torch.FloatTensor(np.array(partial_pcd.points))  # Must be 1, 2024, 3
+        part = torch.FloatTensor(np.array(partial_pcd.points))  # Must be 1, 2024, 3
         start = time.time()  # TODO REMOVE DEBUG
-        indices = fp_sampling(partial.unsqueeze(0), 2024)  # TODO THIS IS SLOW
+        indices = fp_sampling(part.unsqueeze(0), 2024)  # TODO THIS IS SLOW
         print("fps took: {}".format(time.time() - start))  # TODO REMOVE DEBUG
-        partial = partial[indices.long().squeeze()]
+        part = part[indices.long().squeeze()]
 
         # Normalize Point Cloud as training time
-        partial = np.array(partial)
-        mean = np.mean(np.array(partial), axis=0)
-        partial = np.array(partial) - mean
-        var = np.sqrt(np.max(np.sum(partial ** 2, axis=1)))
-        partial = partial / (var * 2)
+        part = np.array(part)
+        mean = np.mean(np.array(part), axis=0)
+        part = np.array(part) - mean
+        var = np.sqrt(np.max(np.sum(part ** 2, axis=1)))
+        part = part / (var * 2)
 
-        partial[..., -1] = -partial[..., -1]  # TODO VERIFY (IS IT NORMAL THAT I NEED TO INVERT THIS?)
+        part[..., -1] = -part[..., -1]  # TODO VERIFY (IS IT NORMAL THAT I NEED TO INVERT THIS?)
 
-        # TODO START TRY TO PUT CLASS
-        complete = generator.reconstruct_point_cloud(partial)
-        poses = generator.find_poses(complete)
-        coords = generator.orient_poses(poses)
+        complete = generator.reconstruct_point_cloud(part)
+        p = generator.find_poses(complete, mult_res=4, n_points=10, iterations=100)
+        coords = generator.orient_poses(p)
         o3d.visualization.draw_geometries(coords + [complete])
-        continue
-        # TODO END START TRY
-
-        # TODO REMOVE DEBUG (VISUALIZE NORMALIZED PARTIAL POINT CLOUD)
-        # partial_pcd = PointCloud()  # TODO VISUALIZE DEBUG
-        # partial_pcd.points = Vector3dVector(partial)  # TODO VISUALIZE DEBUG
-        # colors = np.array([0, 255, 0])[None, ...].repeat(partial.shape[0], axis=0)  # TODO VISUALIZE DEBUG
-        # partial_pcd.colors = Vector3dVector(colors)  # TODO VISUALIZE DEBUG
-        # coord = o3d.geometry.TriangleMesh.create_coordinate_frame()  # TODO VISUALIZE DEBUG
-        # o3d.visualization.draw_geometries([partial_pcd])  # TODO VISUALIZE DEBUG
-
-        # Inference
-        partial = torch.FloatTensor(partial).unsqueeze(0).to(device)
-        prediction = model(partial, step=res)  # TODO step SHOULD BE 0.01
-
-        # Get the selected point on the grid
-        prediction = prediction.squeeze(0).squeeze(-1).detach().cpu().numpy()
-        samples = create_3d_grid(batch_size=partial.shape[0], step=res)  # TODO we create grid two times...
-        samples = samples.squeeze(0).detach().cpu().numpy()
-        selected = samples[prediction > 0.5]
-        pred_pc = PointCloud()
-        pred_pc.points = Vector3dVector(selected)
-        pred_pc.estimate_normals()
-        pred_pc.orient_normals_consistent_tangent_plane(10)
-
-        # TODO REMOVE DEBUG (VISUALIZE PARTIAL POINT CLOUD AND PREDICTED POINT CLOUD)
-        # partial = partial.squeeze(0).detach().cpu().numpy()  # TODO VISUALIZE DEBUG
-        # part_pc = PointCloud()  # TODO VISUALIZE DEBUG
-        # part_pc.points = Vector3dVector(partial)  # TODO VISUALIZE DEBUG
-        # colors = np.array([0, 255, 0])[None, ...].repeat(partial.shape[0], axis=0)  # TODO VISUALIZE DEBUG
-        # part_pc.colors = Vector3dVector(colors)  # TODO VISUALIZE DEBUG
-        # colors = np.array([0, 0, 255])[None, ...].repeat(selected.shape[0], axis=0)  # TODO VISUALIZE DEBUG
-        # pred_pc.colors = Vector3dVector(colors)  # TODO VISUALIZE DEBUG
-        # o3d.visualization.draw_geometries([pred_pc, part_pc])  # TODO VISUALIZE DEBUG
-
-        # Run RANSAC for every face
-        centers = []
-        aux_pc = PointCloud(pred_pc)
-        for i in range(6):
-            points = aux_pc.segment_plane(res*4, 10, 100)  # TODO FINE TUNE THIS PARAMETERS
-            points_list = np.array(points[1])
-            plane_points = np.array(aux_pc.points)[points_list]
-
-            centers.append(np.mean(plane_points, axis=0))
-
-            aux_pc = aux_pc.select_by_index(points[1], invert=True)
-            # o3d.visualization.draw_geometries([aux_pc])  # TODO VISUALIZE DEBUG
-
-        # TODO VISUALIZE DEBUG (VISUALIZE RECONSTRUCTED MESH AND FACE CENTERS)
-        # centers_pc = PointCloud()  # TODO VISUALIZE DEBUG
-        # centers_pc.points = Vector3dVector(np.array(centers))  # TODO VISUALIZE DEBUG
-        # colors = np.array([255, 0, 0])[None, ...].repeat(len(centers_pc.points), axis=0)  # TODO VISUALIZE DEBUG
-        # centers_pc.colors = Vector3dVector(colors)  # TODO VISUALIZE DEBUG
-        # o3d.visualization.draw_geometries([rec_mesh, centers_pc], mesh_show_back_face=True)  # TODO VISUALIZE DEBUG
-
-        # Get closest point from sampled point cloud for every center
-        true_centers = []
-        sampled_mesh = torch.FloatTensor(np.array(pred_pc.points))
-        centers = torch.FloatTensor(np.array(centers))
-        for c in centers:
-            c = c.unsqueeze(0)
-
-            # TODO VISUALIZE DEBUG
-            # c_pc = PointCloud()  # TODO VISUALIZE DEBUG
-            # c_pc.points = Vector3dVector(np.array(c))  # TODO VISUALIZE DEBUG
-            # colors = np.array([255, 0, 0])[None, ...].repeat(len(c), axis=0)  # TODO VISUALIZE DEBUG
-            # c_pc.colors = Vector3dVector(colors)  # TODO VISUALIZE DEBUG
-            # o3d.visualization.draw_geometries([rec_pc, c_pc])  # TODO VISUALIZE DEBUG
-            # TODO END VISUALIZE DEBUG
-
-            dist = sampled_mesh - c
-            dist = torch.square(dist[..., 0]) + torch.square(dist[..., 1]) + torch.square(dist[..., 2])
-            true_centers.append(torch.argmin(dist).numpy())
-
-        true_centers = np.array(true_centers).squeeze()
-
-        # TODO VISUALIZE DEBUG (SHOWS RECONSTRUCTED MESH AND REAL CENTERS)
-        final_points = pred_pc.select_by_index(true_centers)
-
-        pred_pc.normals = Vector3dVector([])  # TODO VISUALIZE MEGA DEBUG
-
-        geometries = [pred_pc, final_points]
-        for c, normal in zip(np.array(final_points.points), np.array(final_points.normals)):
-            coord = o3d.geometry.TriangleMesh.create_coordinate_frame(origin=c, size=0.1)
-            normal = normal/np.linalg.norm(normal)
-            R = create_rotation_matrix(np.array([0, 0, 1]), normal)
-            coord.rotate(R, center=c)
-            geometries.append(coord)
-
-        o3d.visualization.draw_geometries(geometries)
-
-        # true_pc = PointCloud()  # TODO VISUALIZE DEBUG
-        # true_pc.points = Vector3dVector(true_centers)
-        # colors = np.array([255, 0, 0])[None, ...].repeat(len(true_centers), axis=0)  # TODO VISUALIZE DEBUG
-        # true_pc.colors = Vector3dVector(colors)  # TODO VISUALIZE DEBUG
-        # coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
-        # o3d.visualization.draw_geometries([true_pc, coord], mesh_show_back_face=True)  # TODO VISUALIZE DEBUG
-
-        key = cv2.waitKey(1) & 0xFF
-
-        # if the `q` key was pressed, break from the loop
-        if key == ord("q"):
-            break
