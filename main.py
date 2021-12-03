@@ -15,7 +15,7 @@ from configs import DataConfig, ModelConfig, TrainConfig
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 from pytorch_lightning.callbacks import GPUStatsMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from torchmetrics import Accuracy, Precision, Recall, F1, AverageMeter
+from torchmetrics import Accuracy, Precision, Recall, F1, MeanMetric
 import random
 import numpy as np
 import torch.nn.functional as F
@@ -67,8 +67,8 @@ class HyperNetwork(pl.LightningModule):
         self.precision_ = Precision()
         self.recall = Recall()
         self.f1 = F1()
-        self.avg_loss = AverageMeter()
-        self.avg_chamfer = AverageMeter()
+        self.avg_loss = MeanMetric()
+        self.avg_chamfer = MeanMetric()
 
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):

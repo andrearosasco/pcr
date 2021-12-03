@@ -10,7 +10,7 @@ from pytorch_lightning import LightningModule
 from torch import nn
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-from torchmetrics import AverageMeter, F1, Recall, Precision, Accuracy
+from torchmetrics import MeanMetric, F1, Recall, Precision, Accuracy
 import open3d as o3d
 
 from configs import DataConfig, ModelConfig, TrainConfig
@@ -59,8 +59,8 @@ class HyperNetwork(LightningModule):
         self.precision_ = Precision()
         self.recall = Recall()
         self.f1 = F1()
-        self.avg_loss = AverageMeter()
-        self.avg_chamfer = AverageMeter()
+        self.avg_loss = MeanMetric()
+        self.avg_chamfer = MeanMetric()
 
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
