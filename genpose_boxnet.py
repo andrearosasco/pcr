@@ -1,5 +1,6 @@
 from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
+from open3d.cpu.pybind.visualization import Visualizer
 from open3d.visualization import draw_geometries
 from torch import cdist
 from utils.misc import create_3d_grid
@@ -24,6 +25,10 @@ if __name__ == '__main__':
     model = model.to(device)
     model.eval()
 
+    vis = Visualizer()
+    vis.create_window()
+    render = True
+
     generator = FromPartialToPose(model, res)
 
     valid_set = BoxNet(DataConfig, 10000)
@@ -34,12 +39,28 @@ if __name__ == '__main__':
 
         verts, tris = mesh_raw
 
-        mesh = o3d.geometry.TriangleMesh(Vector3dVector(verts), Vector3iVector(tris))
-        o3d.visualization.draw_geometries([mesh])
+        # mesh = o3d.geometry.TriangleMesh(Vector3dVector(verts), Vector3iVector(tris))
+        # o3d.visualization.draw_geometries([mesh])
 
+        # for i in [0.1, 0.5, 1, 2]:
+        #     for k in [10, 100, 1000]:
+        #         for j in [10, 100, 1000]:
+        # print("i: {}, k:{}, j:{}".format(i, k, j))
+
+        # while True:
         part = np.array(partial)
 
         complete = generator.reconstruct_point_cloud(part)
-        p = generator.find_poses(complete, mult_res=2, n_points=100, iterations=1000)
+        colors = np.array([0, 255, 0])[None, ...].repeat(part.shape[0], axis=0)
+        complete.colors = Vector3dVector(colors)
+
+        p = generator.find_poses(complete, mult_res=1.5, n_points=100, iterations=1000, debug=False)
+
         coords = generator.orient_poses(p)
         o3d.visualization.draw_geometries(coords + [complete])
+
+# GOOD: 1, 10, 100  BAD
+# GOOD: 1, 10, 1000  EXCELLENT
+# GOOD: 1, 100, 1000 CAN BE BETTER
+# GOOD: 1, 1000, 1000
+# GOOD: 2, 100, 100
