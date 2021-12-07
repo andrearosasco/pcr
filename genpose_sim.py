@@ -17,7 +17,6 @@ from utils.misc import create_3d_grid
 device = "cuda"
 
 
-# TODO put presentation on teams, do video where I personally test model trained on AMI
 def fp_sampling(points, num, starting_point=None):
     batch_size = points.shape[0]
     # If no starting_point is provided, the starting point is the first point of points
@@ -113,9 +112,20 @@ class FromPartialToPose:
         pred_pc = PointCloud()
         pred_pc.points = Vector3dVector(selected)
 
+        #TODO START EXPERIMENT
+        pred_pc = pred_pc.random_down_sample(0.1)
+        # start = time.time()
+        # pred_pc.estimate_normals()
+        # pred_pc.orient_normals_consistent_tangent_plane(10)
+        # print("EXPERIMENTING NORMALs: {}".format(time.time() - start))
+        # o3d.visualization.draw_geometries([pred_pc])
+        #TODO END EXPERIMENT
+
         # Estimate normals
+        start = time.time()
         pred_pc.estimate_normals()
-        pred_pc.orient_normals_consistent_tangent_plane(10)
+        pred_pc.orient_normals_consistent_tangent_plane(3)
+        print("Estimate normals: {}".format(time.time() - start))
 
         return pred_pc
 
@@ -135,6 +145,14 @@ class FromPartialToPose:
         centers = []
         aux_pc = PointCloud(pc)
         for i in range(6):
+
+            # There are not enough plane in the reconstructed shape
+            if len(aux_pc.points) < n_points:
+                for _ in range(6 - i):
+                    centers.append(np.array([0, 0, 0]))
+                print("Segment plane does not have enough points")
+                break
+
             points = aux_pc.segment_plane(self.grid_res*mult_res, n_points, iterations)
             points_list = np.array(points[1])
             plane_points = np.array(aux_pc.points)[points_list]

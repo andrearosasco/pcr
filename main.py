@@ -1,4 +1,6 @@
 import os
+import time
+
 from utils.lightning import SplitProgressBar
 
 try:
@@ -109,7 +111,10 @@ class HyperNetwork(pl.LightningModule):
     def forward(self, partial, object_id=None, step=0.04):
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
 
+        start = time.time()
         fast_weights, _ = self.backbone(partial)
+        print("Create Fast Weights: {}".format(time.time() - start))
+
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
         return prediction
