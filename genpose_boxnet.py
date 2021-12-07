@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     generator = FromPartialToPose(model, res)
 
-    valid_set = BoxNet(DataConfig, 10000, rotate=False)
+    valid_set = BoxNet(DataConfig, 10000)
 
     # Set up visualizer
     vis = Visualizer()
@@ -37,6 +37,12 @@ if __name__ == '__main__':
     complete_pc.points = Vector3dVector(np.random.randn(2348, 3))
     partial_pc = PointCloud()
     partial_pc.points = Vector3dVector(np.random.randn(2024, 3))
+
+    best1 = o3d.geometry.TriangleMesh.create_sphere(radius=0.1)
+    best2 = o3d.geometry.TriangleMesh.create_sphere(radius=0.1)
+    vis.add_geometry(best1)
+    vis.add_geometry(best2)
+
     coords = []
     prevs = []
     for _ in range(6):
@@ -75,6 +81,11 @@ if __name__ == '__main__':
         # TODO START EXPERIMENT
         poses = p
         news = []
+        highest_value = 0
+        highest_id = -1
+        lowest_value = 0
+        lowest_id = -1
+        i = 0
         for c, normal, prev, coord in zip(np.array(poses.points), np.array(poses.normals), prevs, coords):
             coord.translate(c, relative=False)
             normal = normal/np.linalg.norm(normal)
@@ -82,6 +93,15 @@ if __name__ == '__main__':
             coord.rotate(R, center=c)
             vis.update_geometry(coord)
             news.append(R @ prev)
+
+            if normal[0] > highest_value:
+                highest_value = normal[0]
+                highest_id = i
+            if normal[0] < lowest_value:
+                lowest_value = normal[0]
+                lowest_id = i
+
+            i += 1
         prevs = news
         # TODO END EXPERIMENT
         # coords = generator.orient_poses(p)  # TODO BEFORE
@@ -103,6 +123,12 @@ if __name__ == '__main__':
         colors = np.array([255, 0, 0])[None, ...].repeat(len(complete_pc.points), axis=0)
         complete_pc.colors = Vector3dVector(colors)
         vis.update_geometry(complete_pc)
+
+        # Update best points
+        best1.translate(np.array(poses.points)[highest_id], relative=False)
+        best2.translate(np.array(poses.points)[lowest_id], relative=False)
+        vis.update_geometry(best1)
+        vis.update_geometry(best2)
 
         # Update visualizer
         vis.poll_events()
