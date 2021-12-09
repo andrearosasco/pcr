@@ -6,6 +6,7 @@ import torch.utils.data as data
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation as R
 import random
+import time
 
 
 def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
