@@ -3,6 +3,7 @@ import open3d as o3d
 import numpy as np
 import torch
 from frompartialtopose import iCubGazebo, GenPose, fp_sampling
+import cv2
 
 if __name__ == "__main__":
     test = GenPose()
@@ -14,6 +15,7 @@ if __name__ == "__main__":
 
         # Get image
         rgb, depth = icub.read()
+        cv2.imshow('RGB', rgb)  # TODO VISUALIZE DEBUG
 
         # Get only red part
         rgb_mask = rgb[..., 2] == 102  # Red is the last dimension

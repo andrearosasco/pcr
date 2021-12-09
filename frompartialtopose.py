@@ -103,7 +103,8 @@ class GenPose:
             R = FromPartialToPose.create_rotation_matrix(coord_rot, normal)
             coord_mesh.rotate(R, center=c)
             self.vis.update_geometry(coord_mesh)
-            new_coords_rot.append(R @ coord_rot)
+            new_coord_rot = (R @ coord_rot) / np.linalg.norm(R @ coord_rot)
+            new_coords_rot.append(new_coord_rot)
 
             if normal[0] > highest_value:
                 highest_value = normal[0]
@@ -125,8 +126,8 @@ class GenPose:
         # Update complete point cloud in visualizer
         self.complete_pc.clear()
         self.complete_pc += complete_pc_aux
-        colors = np.array([255, 0, 0])[None, ...].repeat(len(self.complete_pc.points), axis=0)
-        self.complete_pc.colors = Vector3dVector(colors)
+        # colors = np.array([255, 0, 0])[None, ...].repeat(len(self.complete_pc.points), axis=0)
+        # self.complete_pc.colors = Vector3dVector(colors)
         self.vis.update_geometry(self.complete_pc)
 
         # Update best points
@@ -136,10 +137,12 @@ class GenPose:
         R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, self.coords_rot[highest_id])
         self.best1_mesh.rotate(R1)
         self.best1_rot = R1 @ self.best1_rot
+        self.best1_rot = self.best1_rot / np.linalg.norm(self.best1_rot)
 
         R2 = FromPartialToPose.create_rotation_matrix(self.best2_rot, self.coords_rot[lowest_id])
         self.best2_mesh.rotate(R2)
         self.best2_rot = R2 @ self.best2_rot
+        self.best2_rot = self.best2_rot / np.linalg.norm(self.best2_rot)
 
         self.vis.update_geometry(self.best1_mesh)
         self.vis.update_geometry(self.best2_mesh)
