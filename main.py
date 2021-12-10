@@ -1,5 +1,6 @@
 import os
 import time
+from torch.optim import SGD
 
 from utils.lightning import SplitProgressBar
 
@@ -139,6 +140,23 @@ class HyperNetwork(pl.LightningModule):
             one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
+
+        ### Adaptation
+        adaptation_steps = 10
+
+        fast_weights = [[t.clone().detach().requires_grad_(True) for t in l] for l in fast_weights]
+        optim = SGD(sum(fast_weights, []), lr=0.5, momentum=0.9)
+        adpt_samples = partial # should add more negarive samples (e.g. all the one on the same lines of positive samples)
+        for _ in range(adaptation_steps):
+            out = self.sdf(adpt_samples, fast_weights)
+            loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,), device=TrainConfig.device))
+
+            optim.zero_grad()
+            loss.backward(inputs=sum(fast_weights, []))
+            optim.step()
+
+        ### Adaptation
+
         out = self.sdf(samples, fast_weights)
 
         loss = F.binary_cross_entropy_with_logits(out, occupancy.unsqueeze(-1))
@@ -171,6 +189,7 @@ class HyperNetwork(pl.LightningModule):
                                    step=TrainConfig.grid_res_step).to(TrainConfig.device)
 
         occupancy = check_mesh_contains(meshes_list, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
+        # Andrea said         occupancy = check_mesh_contains(meshes_list, self.grid.cpu().tolist(), tolerance=0.01).tolist()
         occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
 
         one_hot = None

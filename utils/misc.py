@@ -298,7 +298,39 @@ def create_sphere():
     return sph
 
 
-def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
+def sample_point_cloud(mesh, n_points=8192, dist=None, noise_rate=0.1, tolerance=0.01):
+    """
+    http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
+    Produces input for implicit function
+    :param mesh: Open3D mesh
+    :param noise_rate: rate of gaussian noise added to the point sampled from the mesh
+    :param percentage_sampled: percentage of point that must be sampled uniform
+    :param total: total number of points that must be returned
+    :param tollerance: maximum distance from mesh for a point to be considered 1.
+    :param mode: str, one in ["unsigned", "signed", "occupancy"]
+    :return: points (N, 3), occupancies (N,)
+    """
+    assert sum(dist) == 1.0
+
+    n_uniform = int(n_points * dist[0])
+    n_noise = int(n_points * dist[1])
+    n_mesh = n_points - (n_uniform + n_noise)
+
+    points_uniform = np.random.rand(n_uniform, 3) - 0.5
+    points_noisy = np.array(mesh.sample_points_uniformly(n_noise).points) + np.random.normal(0, noise_rate, (n_noise, 3))
+    points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points)
+
+    points = np.concatenate([points_uniform, points_noisy, points_surface], axis=0)
+
+    if tolerance > 0:
+        labels = check_mesh_contains([mesh], [points], tolerance=tolerance).squeeze().tolist()
+    elif tolerance == 0:
+        labels = [False] * (n_uniform + n_noise) + [True] * n_mesh
+
+    return points, labels
+
+
+def sample_point_cloud2(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
     """
     http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
     Produces input for implicit function
@@ -359,6 +391,7 @@ def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192,
     return points, occupancies.numpy()
 
 
+
 def get_ptcloud_img(ptcloud):
     fig = plt.figure(figsize=(8, 8))
 
@@ -379,51 +412,6 @@ def get_ptcloud_img(ptcloud):
     return img
 
 
-def visualize_KITTI(path, data_list, titles=['input', 'pred'], cmap=['bwr', 'autumn'], zdir='y',
-                    xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1)):
-    fig = plt.figure(figsize=(6 * len(data_list), 6))
-    cmax = data_list[-1][:, 0].max()
-
-    for i in range(len(data_list)):
-        data = data_list[i][:-2048] if i == 1 else data_list[i]
-        color = data[:, 0] / cmax
-        ax = fig.add_subplot(1, len(data_list), i + 1, projection='3d')
-        ax.view_init(30, -120)
-        b = ax.scatter(data[:, 0], data[:, 1], data[:, 2], zdir=zdir, c=color, vmin=-1, vmax=1, cmap=cmap[0], s=4,
-                       linewidth=0.05, edgecolors='black')
-        ax.set_title(titles[i])
-
-        ax.set_axis_off()
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_zlim(zlim)
-    plt.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=0.2, hspace=0)
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-    pic_path = path + '.png'
-    fig.savefig(pic_path)
-
-    np.save(os.path.join(path, 'input.npy'), data_list[0].numpy())
-    np.save(os.path.join(path, 'pred.npy'), data_list[1].numpy())
-    plt.close(fig)
-
-
-def random_dropping(pc, e):
-    up_num = max(64, 768 // (e // 50 + 1))
-    pc = pc
-    random_num = torch.randint(1, up_num, (1, 1))[0, 0]
-    pc = fps(pc, random_num)
-    padding = torch.zeros(pc.size(0), 2048 - pc.size(1), 3).to(pc.device)
-    pc = torch.cat([pc, padding], dim=1)
-    return pc
-
-
-#
-# def random_scale(partial, scale_range=[0.8, 1.2]):
-#     scale = torch.rand(1).to(xyz.device) * (scale_range[1] - scale_range[0]) + scale_range[0]
-#     return partial * scale
-
 
 def create_3d_grid(min_value=-0.5, max_value=0.5, step=0.04, batch_size=1):
     x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
@@ -437,133 +425,18 @@ def create_3d_grid(min_value=-0.5, max_value=0.5, step=0.04, batch_size=1):
     return grid_3d
 
 
-def check_mesh_contains(meshes, queries, max_dist=0.01):
+def check_mesh_contains(meshes, queries, tolerance=0.01):
     occupancies = []
-    queries = queries.detach().cpu().numpy()
+
     for mesh, query in zip(meshes, queries):
         scene = o3d.t.geometry.RaycastingScene()
         mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
         _ = scene.add_triangles(mesh)
         query_points = o3d.core.Tensor(query, dtype=o3d.core.Dtype.Float32)
-        signed_distance = scene.compute_distance(query_points)
-        occupancies.append((signed_distance < max_dist).numpy())
+        unsigned_distance = scene.compute_distance(query_points)
+        occupancies.append((unsigned_distance < tolerance).numpy())
     occupancies = np.stack(occupancies)[..., None]
-    return occupancies.astype(float)
+    return occupancies
 
 
-def andreas_sampling(mesh, n_points=2048):
-    n_uniform = int(n_points * 0.1)
-    n_noise = int(n_points * 0.4)
-    n_mesh = int(n_points * 0.5)
 
-    points_uniform = np.random.rand(n_uniform, 3) * 2 - 1
-    points_noisy = np.array(mesh.sample_points_uniformly(n_noise).points) + (0.1 * np.random.randn(n_noise, 3))
-    points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points)
-
-    points = np.concatenate([points_uniform, points_noisy, points_surface], axis=0)
-
-    labels = [False] * (n_uniform + n_noise) + [True] * n_mesh
-    return points, labels
-
-
-def fast_from_depth_to_pointcloud(depth, cameras, R, T):
-
-    cx = 312.9869
-    cy = 241.3109
-    fy = 1067.487
-    fx = 1066.778
-
-    cx = 114.8
-    cy = 31.75
-    fy = 76.2
-    fx = 76.2
-
-    k = torch.eye(4).to(depth.device)
-    k[0, :3] = torch.FloatTensor([1 / fx, 0, -(cx * fy) / (fx * fy)]).to(depth.device)
-    k[1, 1:3] = torch.FloatTensor([1 / fy, -cy / fy]).to(depth.device)
-
-    sparse_depth = depth.to_sparse()
-    indices = sparse_depth.indices()
-    values = sparse_depth.values()
-    xy_depth = torch.cat((indices.T, values[..., None]), dim=-1)
-
-    import copy
-    final_z = copy.deepcopy(xy_depth[..., -1])
-
-    xy_depth = torch.cat((xy_depth, 1 / xy_depth[..., -1].unsqueeze(-1)), dim=-1)
-    xy_depth[:, 2] = 1.
-    points = xy_depth @ k.T * final_z.unsqueeze(-1)
-    points = points[:, 0:3]
-
-    R = R.cuda()
-    T = T.cuda()
-
-    points = points - T[0]
-    points = points @ R[0]
-
-    # TODO normalize points
-    # center_x = (max(points[:, 0]) + min(points[:, 0])) / 2
-    # center_y = (max(points[:, 1]) + min(points[:, 1])) / 2
-    # center_z = (max(points[:, 2]) + min(points[:, 2])) / 2
-    # center = torch.FloatTensor([center_x, center_y, center_z]).cuda()
-    # points = points - center
-    #
-    # dist = max(torch.sqrt(torch.square(points[:, 0]) + torch.square(points[:, 1]) + torch.square(points[:, 2])))
-    # points = points * (1.0 / float(dist))  # scale
-
-    # TODO START DEBUG
-    # for i in range(1000):
-    #     sph_radius = 1
-    #     y_light = random.uniform(-sph_radius, sph_radius)
-    #     theta = random.uniform(0, 2 * np.pi)
-    #     x_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * cos(theta)
-    #     z_light = np.sqrt(sph_radius ** 2 - y_light ** 2) * sin(theta)
-    #     points = torch.cat((points, torch.FloatTensor([x_light, y_light, z_light]).unsqueeze(0).to(depth.device)))
-    #
-    # coord = o3d.geometry.TriangleMesh.create_coordinate_frame()
-   # TODO END DEBUG
-    return points
-
-
-def from_depth_to_pointcloud(depth, cameras):
-    K = cameras.get_projection_transform().get_matrix()
-    K = K.squeeze().cuda()
-
-    fx = K[0, 0]
-    cx = K[0, 2]
-    fy = K[1, 1]
-    cy = K[1, 2]
-    #
-    cx = 312.9869
-    cy = 241.3109
-    fy = 1067.487
-    fx = 1066.778
-
-    k = np.eye(4)
-    k[0, :3] = np.array([1 / fx, 0, -(cx * fy) / (fx * fy)])
-    k[1, 1:3] = np.array([1 / fy, -cy / fy])
-    z_scale = 10000.0
-
-    # depth = depth / z_scale
-
-    points = []
-    for u in range(depth.shape[0]):
-        for v in range(depth.shape[1]):
-            z = depth[u, v]
-            if z != 0:
-                xyz = (z * k @ np.array([u, v, 1, 1 / z]))[0:3]
-                points.append(xyz)
-
-    return np.stack(points)
-
-
-class MeshRendererWithDepth(nn.Module):
-    def __init__(self, rasterizer, shader):
-        super().__init__()
-        self.rasterizer = rasterizer
-        self.shader = shader
-
-    def forward(self, meshes_world, **kwargs):
-        fragments = self.rasterizer(meshes_world, **kwargs)
-        images = self.shader(fragments, meshes_world, **kwargs)
-        return images, fragments.zbuf

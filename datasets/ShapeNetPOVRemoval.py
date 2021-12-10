@@ -8,66 +8,7 @@ from scipy.spatial.transform import Rotation as R
 import random
 import time
 
-
-def sample_point_cloud(mesh, noise_rate=0.1, percentage_sampled=0.1, total=8192, tollerance=0.01, mode="unsigned"):
-    """
-    http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
-    Produces input for implicit function
-    :param mesh: Open3D mesh
-    :param noise_rate: rate of gaussian noise added to the point sampled from the mesh
-    :param percentage_sampled: percentage of point that must be sampled uniform
-    :param total: total number of points that must be returned
-    :param tollerance: maximum distance from mesh for a point to be considered 1.
-    :param mode: str, one in ["unsigned", "signed", "occupancy"]
-    :return: points (N, 3), occupancies (N,)
-    """
-    # TODO try also with https://blender.stackexchange.com/questions/31693/how-to-find-if-a-point-is-inside-a-mesh
-    n_points_uniform = int(total * percentage_sampled)
-    n_points_surface = total - n_points_uniform
-
-    points_uniform = np.random.rand(n_points_uniform, 3) - 0.5
-
-    points_surface = np.array(mesh.sample_points_uniformly(n_points_surface).points)
-
-    # TODO REMOVE DEBUG ( VISUALIZE POINT CLOUD SAMPLED FROM THE SURFACE )
-    # from open3d.open3d.geometry import PointCloud
-    # pc = PointCloud()
-    # pc.points = Vector3dVector(points_surface)
-    # open3d.visualization.draw_geometries([pc])
-
-    points_surface = points_surface + (noise_rate * np.random.randn(len(points_surface), 3))
-
-    # TODO REMOVE DEBUG ( VISUALIZE POINT CLOUD FROM SURFACE + SOME NOISE )
-    # pc = PointCloud()
-    # pc.points = Vector3dVector(points_surface)
-    # open3d.visualization.draw_geometries([pc])
-
-    points = np.concatenate([points_uniform, points_surface], axis=0)
-
-    # TODO REMOVE DEBUG ( VISUALIZE ALL POINTS WITHOUT LABEL )
-    # pc = PointCloud()
-    # pc.points = Vector3dVector(points)
-    # open3d.visualization.draw_geometries([pc])
-
-    scene = o3d.t.geometry.RaycastingScene()
-    mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
-    _ = scene.add_triangles(mesh)
-    query_points = o3d.core.Tensor(points, dtype=o3d.core.Dtype.Float32)
-
-    if mode == "unsigned":
-        unsigned_distance = scene.compute_distance(query_points)
-        occupancies1 = -tollerance < unsigned_distance
-        occupancies2 = unsigned_distance < tollerance
-        occupancies = occupancies1 & occupancies2
-    elif mode == "signed":
-        signed_distance = scene.compute_signed_distance(query_points)
-        occupancies = signed_distance < tollerance  # TODO remove this to deal with distances
-    elif mode == "occupancies":
-        occupancies = scene.compute_occupancy(query_points)
-    else:
-        raise NotImplementedError("Mode not implemented")
-
-    return points, occupancies.numpy()
+from utils.misc import sample_point_cloud, sample_point_cloud2
 
 
 def gen_box(min_side=0.05, max_side=0.4):
@@ -87,8 +28,9 @@ class BoxNet(data.Dataset):
 
         # Implicit function input
         self.noise_rate = config.noise_rate
-        self.percentage_sampled = config.percentage_sampled
         self.implicit_input_dimension = config.implicit_input_dimension
+        self.tolerance = config.tolerance
+        self.dist = config.dist
 
         # Synthetic dataset
         self.n_samples = n_samples
@@ -128,10 +70,10 @@ class BoxNet(data.Dataset):
 
         # Sample labeled point on the mesh
         samples, occupancy = sample_point_cloud(mesh,
-                                                self.noise_rate,
-                                                self.percentage_sampled,
-                                                total=self.implicit_input_dimension,
-                                                mode="unsigned")
+                                                n_points=self.implicit_input_dimension,
+                                                dist=self.dist,
+                                                noise_rate=self.noise_rate,
+                                                tolerance=self.tolerance)
 
         partial_pcd = torch.FloatTensor(partial_pcd)
 
@@ -143,10 +85,10 @@ class BoxNet(data.Dataset):
         else:
             print(f'Warning: had to pad the partial pcd - points {partial_pcd.shape[0]} added {self.partial_points - partial_pcd.shape[0]}')
             diff = self.partial_points - partial_pcd.shape[0]
-            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
+            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3))) # TODO nooooooo
 
         samples = torch.tensor(samples).float()
-        occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
+        occupancy = torch.tensor(occupancy, dtype=torch.float)
 
         return 0, partial_pcd, [np.array(mesh.vertices), np.array(mesh.triangles)], samples, occupancy
 

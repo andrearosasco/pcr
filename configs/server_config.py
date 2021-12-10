@@ -13,6 +13,9 @@ class DataConfig:
     noise_rate = 0.02  # amount of noise added to the point sampled on the mesh
     percentage_sampled = 0.1  # number of uniformly sampled points
     implicit_input_dimension = 8192
+    dist = [0.1, 0.9, 0]
+    noise_rate = 0.02
+    tolerance = 0.01
     train_samples = 10000
     val_samples = 100
 
@@ -52,8 +55,8 @@ class TrainConfig:
     visible_dev = '0'
     lr = 1e-4
     wd = 0.0
-    mb_size = 1
-    test_mb_size = 1
+    mb_size = 64
+    test_mb_size = 32
     n_epoch = 100
     clip_value = 1 # 0.5?
     log_metrics_every = 100
@@ -61,7 +64,7 @@ class TrainConfig:
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
     #   dataset can lead to OOM errors
-    num_workers = 0
+    num_workers = 24
     git = ""  # git_hash()
     optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
