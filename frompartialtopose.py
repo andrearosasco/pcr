@@ -11,6 +11,7 @@ from torch import cdist
 from configs.server_config import ModelConfig
 from main import HyperNetwork
 from utils.misc import create_3d_grid
+import cv2
 
 
 device = "cuda"
@@ -44,7 +45,7 @@ class GenPose:
         self.partial_pc.points = Vector3dVector(np.random.randn(2024, 3))
         self.vis.add_geometry(self.partial_pc)
         # Camera TODO ROTATE
-        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0, 0, 1]))
+        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3))
         # Coords
         self.best1_rot = None
         self.best2_rot = None
@@ -75,7 +76,10 @@ class GenPose:
             self.coords_rot.append(np.array([0, 0, 1]))
             self.vis.add_geometry(coord)
 
-    def run(self, partial_points):
+    def run(self, partial_points, mean=None, var=None, depth_pc=None):
+
+        # mean = None
+        var = None
 
         partial_points = np.array(partial_points)  # From list to array
         partial_pc_aux = PointCloud()
@@ -98,10 +102,18 @@ class GenPose:
         i = 0
         for c, normal, coord_rot, coord_mesh in zip(np.array(poses.points), np.array(poses.normals),
                                                     self.coords_rot, self.coords_mesh):
+
+            # if mean is not None and var is not None:
+            #     c[2] = -c[2]
+
             coord_mesh.translate(c, relative=False)
             normal = normal / np.linalg.norm(normal)
             R = FromPartialToPose.create_rotation_matrix(coord_rot, normal)
             coord_mesh.rotate(R, center=c)
+
+            if mean is not None:
+                coord_mesh.translate(mean, relative=True)
+
             self.vis.update_geometry(coord_mesh)
             new_coord_rot = (R @ coord_rot) / np.linalg.norm(R @ coord_rot)
             new_coords_rot.append(new_coord_rot)
@@ -117,22 +129,53 @@ class GenPose:
         self.coords_rot = new_coords_rot
 
         # Update partial point cloud in visualizer
+        # NOTE: this point cloud (after the de normalization) overlaps with the point cloud reconstructed from the depth
         self.partial_pc.clear()
         self.partial_pc += partial_pc_aux
         colors = np.array([0, 255, 0])[None, ...].repeat(len(self.partial_pc.points), axis=0)
         self.partial_pc.colors = Vector3dVector(colors)
+        # Invert x axis to plot like the pc obtained from depth
+        if mean is not None:  # and var is not None:
+            inverted = np.array(self.partial_pc.points)
+            # inverted[..., 2] = -inverted[..., 2]
+            self.partial_pc.points = Vector3dVector(inverted)
+            # De-normalize
+            if var is not None:
+                self.partial_pc.scale(var*2, center=[0, 0, 0])
+            if mean is not None:
+                self.partial_pc.translate(mean)
         self.vis.update_geometry(self.partial_pc)
 
         # Update complete point cloud in visualizer
         self.complete_pc.clear()
         self.complete_pc += complete_pc_aux
-        # colors = np.array([255, 0, 0])[None, ...].repeat(len(self.complete_pc.points), axis=0)
-        # self.complete_pc.colors = Vector3dVector(colors)
+        colors = np.array([255, 0, 0])[None, ...].repeat(len(self.complete_pc.points), axis=0)
+        self.complete_pc.colors = Vector3dVector(colors)
+        # Invert x axis to plot like the pc obtained from the depth
+        if mean is not None:  # and var is not None:
+            inverted = np.array(self.complete_pc.points)
+            # inverted[..., 2] = -inverted[..., 2]
+            self.complete_pc.points = Vector3dVector(inverted)
+            # De-normalize
+            if var is not None:
+                self.complete_pc.scale(var*2, center=[0, 0, 0])
+            if mean is not None:
+                self.complete_pc.translate(mean)
         self.vis.update_geometry(self.complete_pc)
 
         # Update best points
-        self.best1_mesh.translate(np.array(poses.points)[highest_id], relative=False)
-        self.best2_mesh.translate(np.array(poses.points)[lowest_id], relative=False)
+        c = np.array(poses.points)[highest_id]
+        # if mean is not None:
+        #     c[2] = -c[2]
+        self.best1_mesh.translate(c, relative=False)
+        if mean is not None:
+            self.best1_mesh.translate(mean, relative=True)
+        c = np.array(poses.points)[lowest_id]
+        # if mean is not None:
+        #     c[2] = -c[2]
+        self.best2_mesh.translate(c, relative=False)
+        if mean is not None:
+            self.best2_mesh.translate(mean, relative=True)
 
         R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, self.coords_rot[highest_id])
         self.best1_mesh.rotate(R1)
@@ -150,6 +193,18 @@ class GenPose:
         # Update visualizer
         self.vis.poll_events()
         self.vis.update_renderer()
+
+        # Visualize point cloud vision from robot's perspective
+        rgb = np.array(self.vis.capture_screen_float_buffer())
+        rgb = cv2.resize(rgb, (320, 240))
+        cv2.imshow("PC", rgb)
+
+        # TODO REMOVE DEBUG
+        g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
+                                o3d.geometry.TriangleMesh.create_coordinate_frame()]
+        o3d.visualization.draw_geometries(g)
+        # o3d.visualization.draw_geometries([depth_pc, self.partial_pc])
+        # o3d.visualization.draw_geometries([self.complete_pc, depth_pc, o3d.geometry.TriangleMesh.create_coordinate_frame()])
 
 
 def fp_sampling(points, num, starting_point=None):

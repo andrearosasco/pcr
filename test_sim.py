@@ -2,6 +2,9 @@ import msvcrt
 import open3d as o3d
 import numpy as np
 import torch
+from open3d.cpu.pybind.geometry import PointCloud
+from open3d.cpu.pybind.utility import Vector3dVector
+
 from frompartialtopose import iCubGazebo, GenPose, fp_sampling
 import cv2
 
@@ -31,7 +34,7 @@ if __name__ == "__main__":
         cy = 120.0
         intrinsics = o3d.camera.PinholeCameraIntrinsic(320, 240, fx, fy, cx, cy)
         partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(o3d.geometry.Image(filtered_depth), intrinsics)
-        # o3d.visualization.draw_geometries([pc])  # TODO VISUALIZE DEBUG
+        # o3d.visualization.draw_geometries([partial_pcd, o3d.geometry.TriangleMesh.create_coordinate_frame()])  # TODO VISUALIZE DEBUG
 
         # Sample Point Cloud
         part = torch.FloatTensor(np.array(partial_pcd.points))  # Must be 1, 2024, 3
@@ -48,8 +51,19 @@ if __name__ == "__main__":
         part = part / (var * 2)
 
         part[..., -1] = -part[..., -1]  # TODO VERIFY (IS IT NORMAL THAT I NEED TO INVERT THIS?)
+        # TODO REMOVE DEBUG
+        # pc = PointCloud()
+        # pc.points = Vector3dVector(part)
+        # o3d.visualization.draw_geometries([pc, o3d.geometry.TriangleMesh.create_coordinate_frame()])
+        # inverted = np.array(pc.points)
+        # inverted[..., 2] = -inverted[..., 2]
+        # pc.points = Vector3dVector(inverted)
+        # pc.scale(var*2, center=[0, 0, 0])
+        # pc.translate(mean)
+        # o3d.visualization.draw_geometries([pc, o3d.geometry.TriangleMesh.create_coordinate_frame(), partial_pcd])
+        # TODO REMOVE DEBUG
 
-        test.run(part)
+        test.run(part, mean=mean, var=var, depth_pc=partial_pcd)
 
         if msvcrt.kbhit():
             print(msvcrt.getch())
