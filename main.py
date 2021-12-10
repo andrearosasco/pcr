@@ -1,4 +1,7 @@
 import os
+
+from torch.optim import SGD
+
 from utils.lightning import SplitProgressBar
 
 try:
@@ -134,6 +137,23 @@ class HyperNetwork(pl.LightningModule):
             one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
+
+        ### Adaptation
+        adaptation_steps = 10
+
+        fast_weights = [[t.clone().detach().requires_grad_(True) for t in l] for l in fast_weights]
+        optim = SGD(sum(fast_weights, []), lr=0.5, momentum=0.9)
+        adpt_samples = partial # should add more negarive samples (e.g. all the one on the same lines of positive samples)
+        for _ in range(adaptation_steps):
+            out = self.sdf(adpt_samples, fast_weights)
+            loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,), device=TrainConfig.device))
+
+            optim.zero_grad()
+            loss.backward(inputs=sum(fast_weights, []))
+            optim.step()
+
+        ### Adaptation
+
         out = self.sdf(samples, fast_weights)
 
         loss = F.binary_cross_entropy_with_logits(out, occupancy.unsqueeze(-1))
@@ -165,7 +185,7 @@ class HyperNetwork(pl.LightningModule):
         self.grid = create_3d_grid(batch_size=label.shape[0],
                                    step=TrainConfig.grid_res_step).to(TrainConfig.device)
 
-        occupancy = check_mesh_contains(meshes_list, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
+        occupancy = check_mesh_contains(meshes_list, self.grid.cpu().tolist(), tolerance=0.01).tolist()  # TODO PARALLELIZE IT
         occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
 
         one_hot = None
@@ -295,7 +315,7 @@ if __name__ == '__main__':
               'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
                        not k.startswith("__")}}
 
-    wandb.login(key="f5f77cf17fad38aaa2db860576eee24bde163b7a")
+    wandb.login()
     wandb.init(project="train_box")
     wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
 
@@ -313,7 +333,7 @@ if __name__ == '__main__':
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
-                         callbacks=[GPUStatsMonitor(),
+                         callbacks=[
                                     SplitProgressBar(),
                                     checkpoint_callback],
                          )

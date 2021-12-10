@@ -12,16 +12,16 @@ device = "cuda"
 
 @dataclass
 class DataConfig:
-    dataset_path = ".." + os.sep + "synthetic_dataset" + os.sep + "dataset"
-    partial_points = 2048
+    partial_points = 2024
     multiplier_complete_sampling = 50
-    noise_rate = 0.02
-    percentage_sampled = 0.1
-    tollerance = 0.0001
-    mode = 'easy'  # train, valid, test
-    n_classes = 55
+    # amount of noise added to the point sampled on the mesh
+    # number of uniformly sampled points
     implicit_input_dimension = 8192
-    n_samples = 1000
+    dist = [0.1, 0.9, 0]
+    noise_rate = 0.02
+    tolerance = 0.01
+    train_samples = 10000
+    val_samples = 100
 
 
 @dataclass
@@ -42,9 +42,9 @@ class ModelConfig:
     out_size = 1024
     # Implicit Function
     hidden_dim = 32
-    depth = 0
+    depth = 2
     # Others
-    use_object_id = True
+    use_object_id = False
     use_deep_weights_generator = False
     n_classes = 55
     assert divmod(embed_dim, num_heads)[1] == 0

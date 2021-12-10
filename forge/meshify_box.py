@@ -34,7 +34,7 @@ def fp_sampling(points, num, starting_point=None):
 
 if __name__ == '__main__':
 
-    model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
+    model = HyperNetwork.load_from_checkpoint('../checkpoint/best', config=ModelConfig)
     model = model.to(device)
     model.eval()
 

@@ -66,7 +66,7 @@ class iCubGazebo:
 
 if __name__ == '__main__':
     icub = iCubGazebo()
-    model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
+    model = HyperNetwork.load_from_checkpoint('../checkpoint/best', config=ModelConfig)
     model = model.to(device)
     model.eval()
     while True:

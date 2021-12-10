@@ -35,11 +35,11 @@ line_set.lines = o3d.utility.Vector2iVector(lines)
 #####################################################
 ############# Model and Camera Setup ################
 #####################################################
-model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
+model = HyperNetwork.load_from_checkpoint('checkpoint/best', config=ModelConfig)
 model = model.to('cuda')
 model.eval()
 
-camera = RealSense()
+# camera = RealSense()
 
 #####################################################
 ############# Point Cloud Processing ################
@@ -48,11 +48,17 @@ camera = RealSense()
 ### Read the pointcloud from a source
 # depth = np.array(Image.open(f'000299-depth.png'), dtype=np.float32)
 # _, depth = camera.read()
-depth = np.array(Image.open(f'depth_test.png'), dtype=np.uint16)
+# read_time, seg_time, inf_time, ref_time = 0, 0, 0, 0
+# for i in range(100):
 
+# start = time.time()
+depth = np.array(Image.open(f'depth_test.png'), dtype=np.uint16)
+# read_time += (time.time() - start)
+
+start = time.time()
 ### Cut the depth at a 2m distance
 depth[depth > 2000] = 0
-full_pc = camera.pointcloud(depth)
+full_pc = RealSense.pointcloud(depth)
 
 ### Randomly subsample 5% of the total points (to ease DBSCAN processing)
 idx = np.random.choice(full_pc.shape[0], (int(full_pc.shape[0] * 0.05)), replace=False)
@@ -66,7 +72,9 @@ segmented_pc = downsampled_pc[clustering.labels_ == close]
 ### Randomly choose 2024 points (model input size)
 idx = np.random.choice(segmented_pc.shape[0], (2024), replace=False)
 size_pc = segmented_pc[idx]
+# seg_time += time.time() - start
 
+# start = time.time()
 ### Normalize Point Cloud
 mean = np.mean(size_pc, axis=0)
 var = np.sqrt(np.max(np.sum((size_pc - mean) ** 2, axis=1)))
@@ -91,9 +99,12 @@ prediction = torch.sigmoid(model.sdf(samples, fast_weights))
 
 prediction = prediction.squeeze(0).squeeze(-1).detach().cpu().numpy()
 
+# inf_time += time.time() - start
+
 ##################################################
 ################## Refinement ####################
 ##################################################
+# start = time.time()
 refined_pred = torch.tensor(samples[:, prediction >= 0.5, :].cpu().detach().numpy(), device=TrainConfig.device,
                             requires_grad=True)
 refined_pred_0 = copy.deepcopy(refined_pred.detach())
@@ -101,17 +112,16 @@ refined_pred_0 = copy.deepcopy(refined_pred.detach())
 loss_function = BCEWithLogitsLoss(reduction='mean')
 optim = SGD([refined_pred], lr=0.5, momentum=0.9)
 
-
-for step in range(100):
+c1, c2, c3 = 1, 0, 0 #1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
+for step in range(0):
     results = model.sdf(refined_pred, fast_weights)
 
     gt = torch.ones_like(results[..., 0], dtype=torch.float32)
     gt[:, :] = 1
-    loss1 = loss_function(results[..., 0], gt)
-    loss2 = 1e3*torch.mean((refined_pred - refined_pred_0) ** 2)
-    # loss3 = 10 * torch.mean(
-    #     cdist(refined_pred, model_input).sort(dim=2)[0][:, :, 0])  # it works but it would be nicer to do the opposite
-    loss_value = loss1 + loss2 # + loss3
+    loss1 = c1 * loss_function(results[..., 0], gt)
+    loss2 = c2 * torch.mean((refined_pred - refined_pred_0) ** 2)
+    loss3 = c3 * torch.mean(cdist(refined_pred, model_input).sort(dim=2)[0][:, :, 0])  # it works but it would be nicer to do the opposite
+    loss_value = loss1 + loss2 + loss3
 
     model.zero_grad()
     optim.zero_grad()
@@ -126,7 +136,7 @@ for step in range(100):
     # refined_pred = torch.tensor(refined_pred.cpu().detach().numpy(), device=TrainConfig.device,
     #                             requires_grad=True)
 
-
+# ref_time += time.time() - start
 ##################################################
 ################# Visualization ##################
 ##################################################
@@ -145,11 +155,11 @@ part_pc.points = Vector3dVector(full_pc)
 part_pc.paint_uniform_color([0, 1, 0])
 
 
-print('Centro della pointcloud parziale iniziale', mean)
-print('Centro della pointcloud parziale centrata', np.mean(normalized_pc, axis=0))
-
-print('Centro della pointcloud ricostruita', np.mean(selected, axis=0))
-print('Centro della pointcloud parziale spostata', np.mean(np.array(pred_pc.points), axis=0))
+# print(f'read time - {read_time / 100}')
+# print(f'seg time - {seg_time / 100}')
+# print(f'inf time - {inf_time / 100}')
+# print(f'ref time - {ref_time / 100}')
+# print(f'tot time - {(read_time + seg_time + inf_time + ref_time) / 100}')
 
 centers = o3d.geometry.LineSet()
 centers.points = o3d.utility.Vector3dVector([np.mean(normalized_pc, axis=0).tolist(), mean.tolist(),

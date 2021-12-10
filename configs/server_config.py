@@ -10,9 +10,12 @@ device = 'cuda'
 class DataConfig:
     partial_points = 2024
     multiplier_complete_sampling = 50
-    noise_rate = 0.02  # amount of noise added to the point sampled on the mesh
-    percentage_sampled = 0.1  # number of uniformly sampled points
+      # amount of noise added to the point sampled on the mesh
+      # number of uniformly sampled points
     implicit_input_dimension = 8192
+    dist = [0.1, 0.9, 0]
+    noise_rate = 0.02
+    tolerance = 0.01
     train_samples = 10000
     val_samples = 100
 
@@ -54,7 +57,7 @@ class TrainConfig:
     wd = 0.0
     mb_size = 64
     test_mb_size = 32
-    n_epoch = 100
+    n_epoch = 500
     clip_value = 1 # 0.5?
     log_metrics_every = 100
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
