@@ -6,6 +6,7 @@ import torch.utils.data as data
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation as R
 import random
+import time
 
 from utils.misc import sample_point_cloud, sample_point_cloud2
 
@@ -20,7 +21,7 @@ def gen_box(min_side=0.05, max_side=0.4):
 
 
 class BoxNet(data.Dataset):
-    def __init__(self, config, n_samples):
+    def __init__(self, config, n_samples, rotate=True):
         #  Backbone Input
         self.partial_points = config.partial_points
         self.multiplier_complete_sampling = config.multiplier_complete_sampling
@@ -33,14 +34,16 @@ class BoxNet(data.Dataset):
 
         # Synthetic dataset
         self.n_samples = n_samples
+        self.rotate = rotate
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
         # Find the mesh
         mesh = gen_box()
 
         while True:
-            rotation = R.random().as_matrix()
-            mesh = mesh.rotate(rotation)
+            if self.rotate:
+                rotation = R.random().as_matrix()
+                mesh = mesh.rotate(rotation)
 
             # Define camera transformation and intrinsics
             #  (Camera is in the origin facing negative z, shifting it of z=1 puts it in front of the object)
