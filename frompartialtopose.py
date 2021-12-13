@@ -17,6 +17,11 @@ import cv2
 device = "cuda"
 
 
+# TODO NOTE
+# In order to see the visualization correctly, one should stay in the coordinate frame, looking towards +z with +x
+# facing towards -x and +y facing towards -y
+
+
 class GenPose:
     def __init__(self, device="cuda", res=0.01):
 
@@ -45,7 +50,7 @@ class GenPose:
         self.partial_pc.points = Vector3dVector(np.random.randn(2024, 3))
         self.vis.add_geometry(self.partial_pc)
         # Camera TODO ROTATE
-        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3))
+        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
         # Coords
         self.best1_rot = None
         self.best2_rot = None
@@ -76,10 +81,7 @@ class GenPose:
             self.coords_rot.append(np.array([0, 0, 1]))
             self.vis.add_geometry(coord)
 
-    def run(self, partial_points, mean=None, var=None, depth_pc=None):
-
-        # mean = None
-        var = None
+    def run(self, partial_points, mean=(0, 0, 0), var=1, depth_pc=None):
 
         partial_points = np.array(partial_points)  # From list to array
         partial_pc_aux = PointCloud()
@@ -90,7 +92,7 @@ class GenPose:
         complete_pc_aux = self.generator.reconstruct_point_cloud(partial_points)
         # print("Reconstruct: {}".format(time.time() - start))
 
-        # Find poses
+        # Find poses  #1.5 100 1000
         poses = self.generator.find_poses(complete_pc_aux, mult_res=1.5, n_points=100, iterations=1000, debug=False)
 
         # Orient poses
@@ -103,16 +105,16 @@ class GenPose:
         for c, normal, coord_rot, coord_mesh in zip(np.array(poses.points), np.array(poses.normals),
                                                     self.coords_rot, self.coords_mesh):
 
-            # if mean is not None and var is not None:
-            #     c[2] = -c[2]
+            c[2] = -c[2]  # Invert depth
+            normal[2] = -normal[2]  # Invert normal in depth dimension
+            c = c*var*2  # De-normalize center
 
             coord_mesh.translate(c, relative=False)
             normal = normal / np.linalg.norm(normal)
             R = FromPartialToPose.create_rotation_matrix(coord_rot, normal)
             coord_mesh.rotate(R, center=c)
 
-            if mean is not None:
-                coord_mesh.translate(mean, relative=True)
+            coord_mesh.translate(mean, relative=True)  # Translate coord as the point cloud
 
             self.vis.update_geometry(coord_mesh)
             new_coord_rot = (R @ coord_rot) / np.linalg.norm(R @ coord_rot)
@@ -135,15 +137,12 @@ class GenPose:
         colors = np.array([0, 255, 0])[None, ...].repeat(len(self.partial_pc.points), axis=0)
         self.partial_pc.colors = Vector3dVector(colors)
         # Invert x axis to plot like the pc obtained from depth
-        if mean is not None:  # and var is not None:
-            inverted = np.array(self.partial_pc.points)
-            # inverted[..., 2] = -inverted[..., 2]
-            self.partial_pc.points = Vector3dVector(inverted)
-            # De-normalize
-            if var is not None:
-                self.partial_pc.scale(var*2, center=[0, 0, 0])
-            if mean is not None:
-                self.partial_pc.translate(mean)
+        inverted = np.array(self.partial_pc.points)
+        inverted[..., 2] = -inverted[..., 2]
+        self.partial_pc.points = Vector3dVector(inverted)
+        # De-normalize
+        self.partial_pc.scale(var*2, center=[0, 0, 0])
+        self.partial_pc.translate(mean)
         self.vis.update_geometry(self.partial_pc)
 
         # Update complete point cloud in visualizer
@@ -152,35 +151,36 @@ class GenPose:
         colors = np.array([255, 0, 0])[None, ...].repeat(len(self.complete_pc.points), axis=0)
         self.complete_pc.colors = Vector3dVector(colors)
         # Invert x axis to plot like the pc obtained from the depth
-        if mean is not None:  # and var is not None:
-            inverted = np.array(self.complete_pc.points)
-            # inverted[..., 2] = -inverted[..., 2]
-            self.complete_pc.points = Vector3dVector(inverted)
-            # De-normalize
-            if var is not None:
-                self.complete_pc.scale(var*2, center=[0, 0, 0])
-            if mean is not None:
-                self.complete_pc.translate(mean)
+        inverted = np.array(self.complete_pc.points)
+        inverted[..., 2] = -inverted[..., 2]
+        self.complete_pc.points = Vector3dVector(inverted)
+        # De-normalize
+        self.complete_pc.scale(var*2, center=[0, 0, 0])
+        self.complete_pc.translate(mean)
         self.vis.update_geometry(self.complete_pc)
 
         # Update best points
         c = np.array(poses.points)[highest_id]
-        # if mean is not None:
-        #     c[2] = -c[2]
+        c[2] = -c[2]  # Invert depth
+        c = c * var * 2  # De-normalize center
         self.best1_mesh.translate(c, relative=False)
-        if mean is not None:
-            self.best1_mesh.translate(mean, relative=True)
-        c = np.array(poses.points)[lowest_id]
-        # if mean is not None:
-        #     c[2] = -c[2]
-        self.best2_mesh.translate(c, relative=False)
-        if mean is not None:
-            self.best2_mesh.translate(mean, relative=True)
+        self.best1_mesh.translate(mean, relative=True)
 
-        R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, self.coords_rot[highest_id])
+        c = np.array(poses.points)[lowest_id]
+        c[2] = -c[2]  # Invert depth
+        c = c * var * 2  # De-normalize center
+        self.best2_mesh.translate(c, relative=False)
+        self.best2_mesh.translate(mean, relative=True)
+
+        inverted_pose = self.coords_rot[highest_id]  # TODO VERIFY
+        inverted_pose = -inverted_pose  # TODO VERIFY
+        R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, inverted_pose)  # TODO VERIFY
         self.best1_mesh.rotate(R1)
         self.best1_rot = R1 @ self.best1_rot
         self.best1_rot = self.best1_rot / np.linalg.norm(self.best1_rot)
+        # TODO EXPERIMENT
+        R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, inverted_pose)  # TODO VERIFY
+        # TODO END EXPERIMENT
 
         R2 = FromPartialToPose.create_rotation_matrix(self.best2_rot, self.coords_rot[lowest_id])
         self.best2_mesh.rotate(R2)
@@ -194,16 +194,36 @@ class GenPose:
         self.vis.poll_events()
         self.vis.update_renderer()
 
+        # Return results
+        xyz_left = np.array(poses.points)[highest_id]
+        xyz_left[2] = -xyz_left[2]  # Invert depth
+        xyz_left = xyz_left * var * 2  # De-normalize center
+
+        xyz_right = np.array(poses.points)[lowest_id]
+        xyz_right[2] = -xyz_right[2]  # Invert depth
+        xyz_right = xyz_right * var * 2  # De-normalize center
+
+        # self.complete_pc.estimate_normals()  # TODO REMOVE
+        # self.complete_pc.orient_normals_consistent_tangent_plane(5)  # TODO REMOVE
+        # #
+        # g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
+        #                         o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)]
+        # o3d.visualization.draw_geometries(g)
+
+        return xyz_left, self.coords_rot[highest_id], xyz_right, self.coords_rot[lowest_id]
+
         # Visualize point cloud vision from robot's perspective
-        rgb = np.array(self.vis.capture_screen_float_buffer())
-        rgb = cv2.resize(rgb, (320, 240))
-        cv2.imshow("PC", rgb)
+        # rgb = np.array(self.vis.capture_screen_float_buffer())
+        # rgb = cv2.resize(rgb, (320, 240))
+        # cv2.imshow("PC", rgb)
 
         # TODO REMOVE DEBUG
-        g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
-                                o3d.geometry.TriangleMesh.create_coordinate_frame()]
-        o3d.visualization.draw_geometries(g)
+        # g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
+        #                         o3d.geometry.TriangleMesh.create_coordinate_frame()]
+        # o3d.visualization.draw_geometries(g)
+
         # o3d.visualization.draw_geometries([depth_pc, self.partial_pc])
+
         # o3d.visualization.draw_geometries([self.complete_pc, depth_pc, o3d.geometry.TriangleMesh.create_coordinate_frame()])
 
 
@@ -314,7 +334,7 @@ class FromPartialToPose:
         # Estimate normals
         # start = time.time()
         pred_pc.estimate_normals()
-        pred_pc.orient_normals_consistent_tangent_plane(3)
+        pred_pc.orient_normals_consistent_tangent_plane(5)
         # print("Estimate normals: {}".format(time.time() - start))
 
         return pred_pc

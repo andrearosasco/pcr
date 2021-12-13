@@ -14,7 +14,6 @@ class DataConfig:
     percentage_sampled = 0.1  # number of uniformly sampled points
     implicit_input_dimension = 8192
     dist = [0.1, 0.9, 0]
-    noise_rate = 0.02
     tolerance = 0.01
     train_samples = 10000
     val_samples = 100

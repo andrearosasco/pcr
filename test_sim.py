@@ -63,7 +63,8 @@ if __name__ == "__main__":
         # o3d.visualization.draw_geometries([pc, o3d.geometry.TriangleMesh.create_coordinate_frame(), partial_pcd])
         # TODO REMOVE DEBUG
 
-        test.run(part, mean=mean, var=var, depth_pc=partial_pcd)
+        res = test.run(part, mean=mean, var=var, depth_pc=partial_pcd)
+        # print(res)
 
         if msvcrt.kbhit():
             print(msvcrt.getch())
