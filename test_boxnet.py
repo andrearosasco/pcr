@@ -1,6 +1,6 @@
 from configs.server_config import DataConfig
 from datasets.ShapeNetPOVRemoval import BoxNet
-from frompartialtopose import GenPose
+from utils.pose_visualizer import PoseVisualizer
 import msvcrt
 
 
@@ -8,7 +8,7 @@ import msvcrt
 
 
 if __name__ == "__main__":
-    test = GenPose()
+    test = PoseVisualizer()
     valid_set = BoxNet(DataConfig, 10000)
 
     for s in valid_set:

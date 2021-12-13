@@ -1,20 +1,13 @@
-import time
-import random
-import yarp
+import copy
 import numpy as np
 import open3d as o3d
 import torch
 from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
-from open3d.cpu.pybind.visualization import Visualizer
 from torch import cdist
-from configs.server_config import ModelConfig
-from main import HyperNetwork
-from utils.misc import create_3d_grid
-import cv2
-
-
-device = "cuda"
+from torch.nn import BCEWithLogitsLoss
+from torch.optim import SGD
+import time
 
 
 # TODO NOTE
@@ -22,261 +15,11 @@ device = "cuda"
 # facing towards -x and +y facing towards -y
 
 
-class GenPose:
-    def __init__(self, device="cuda", res=0.01):
-
-        # Random seed
-        random.seed(int(time.time()))
-        np.random.seed(int(time.time()))
-
-        # Class parameters
-        self.device = device
-        self.res = res
-        # Pose generator
-        model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
-        model = model.to(device)
-        model.eval()
-        self.generator = FromPartialToPose(model, res)
-
-        # Set up visualizer
-        self.vis = Visualizer()
-        self.vis.create_window()
-        # Complete point cloud
-        self.complete_pc = PointCloud()
-        self.complete_pc.points = Vector3dVector(np.random.randn(2348, 3))
-        self.vis.add_geometry(self.complete_pc)
-        # Partial point cloud
-        self.partial_pc = PointCloud()
-        self.partial_pc.points = Vector3dVector(np.random.randn(2024, 3))
-        self.vis.add_geometry(self.partial_pc)
-        # Camera TODO ROTATE
-        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
-        # Coords
-        self.best1_rot = None
-        self.best2_rot = None
-        self.best1_mesh = None
-        self.best2_mesh = None
-        self.coords_mesh = None
-        self.coords_rot = None
-
-    def reset_coords(self):
-        self.vis.remove_geometry(self.best1_mesh)
-        self.vis.remove_geometry(self.best2_mesh)
-        if self.coords_mesh is not None:
-            for coord in self.coords_mesh:
-                self.vis.remove_geometry(coord)
-
-        self.best1_rot = np.array([0, 0, 1])
-        self.best2_rot = np.array([0, 0, 1])
-        self.best1_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-        self.best2_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-        self.vis.add_geometry(self.best1_mesh)
-        self.vis.add_geometry(self.best2_mesh)
-
-        self.coords_mesh = []
-        self.coords_rot = []
-        for _ in range(6):
-            coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-            self.coords_mesh.append(coord)
-            self.coords_rot.append(np.array([0, 0, 1]))
-            self.vis.add_geometry(coord)
-
-    def run(self, partial_points, mean=(0, 0, 0), var=1, depth_pc=None):
-
-        partial_points = np.array(partial_points)  # From list to array
-        partial_pc_aux = PointCloud()
-        partial_pc_aux.points = Vector3dVector(partial_points)
-
-        # Reconstruct partial point cloud
-        # start = time.time()
-        complete_pc_aux = self.generator.reconstruct_point_cloud(partial_points)
-        # print("Reconstruct: {}".format(time.time() - start))
-
-        # Find poses  #1.5 100 1000
-        poses = self.generator.find_poses(complete_pc_aux, mult_res=1.5, n_points=100, iterations=1000, debug=False)
-
-        # Orient poses
-        new_coords_rot = []
-        highest_value = 0
-        highest_id = -1
-        lowest_value = 0
-        lowest_id = -1
-        i = 0
-        for c, normal, coord_rot, coord_mesh in zip(np.array(poses.points), np.array(poses.normals),
-                                                    self.coords_rot, self.coords_mesh):
-
-            c[2] = -c[2]  # Invert depth
-            normal[2] = -normal[2]  # Invert normal in depth dimension
-            c = c*var*2  # De-normalize center
-
-            coord_mesh.translate(c, relative=False)
-            normal = normal / np.linalg.norm(normal)
-            R = FromPartialToPose.create_rotation_matrix(coord_rot, normal)
-            coord_mesh.rotate(R, center=c)
-
-            coord_mesh.translate(mean, relative=True)  # Translate coord as the point cloud
-
-            self.vis.update_geometry(coord_mesh)
-            new_coord_rot = (R @ coord_rot) / np.linalg.norm(R @ coord_rot)
-            new_coords_rot.append(new_coord_rot)
-
-            if normal[0] > highest_value:
-                highest_value = normal[0]
-                highest_id = i
-            if normal[0] < lowest_value:
-                lowest_value = normal[0]
-                lowest_id = i
-
-            i += 1
-        self.coords_rot = new_coords_rot
-
-        # Update partial point cloud in visualizer
-        # NOTE: this point cloud (after the de normalization) overlaps with the point cloud reconstructed from the depth
-        self.partial_pc.clear()
-        self.partial_pc += partial_pc_aux
-        colors = np.array([0, 255, 0])[None, ...].repeat(len(self.partial_pc.points), axis=0)
-        self.partial_pc.colors = Vector3dVector(colors)
-        # Invert x axis to plot like the pc obtained from depth
-        inverted = np.array(self.partial_pc.points)
-        inverted[..., 2] = -inverted[..., 2]
-        self.partial_pc.points = Vector3dVector(inverted)
-        # De-normalize
-        self.partial_pc.scale(var*2, center=[0, 0, 0])
-        self.partial_pc.translate(mean)
-        self.vis.update_geometry(self.partial_pc)
-
-        # Update complete point cloud in visualizer
-        self.complete_pc.clear()
-        self.complete_pc += complete_pc_aux
-        colors = np.array([255, 0, 0])[None, ...].repeat(len(self.complete_pc.points), axis=0)
-        self.complete_pc.colors = Vector3dVector(colors)
-        # Invert x axis to plot like the pc obtained from the depth
-        inverted = np.array(self.complete_pc.points)
-        inverted[..., 2] = -inverted[..., 2]
-        self.complete_pc.points = Vector3dVector(inverted)
-        # De-normalize
-        self.complete_pc.scale(var*2, center=[0, 0, 0])
-        self.complete_pc.translate(mean)
-        self.vis.update_geometry(self.complete_pc)
-
-        # Update best points
-        c = np.array(poses.points)[highest_id]
-        c[2] = -c[2]  # Invert depth
-        c = c * var * 2  # De-normalize center
-        self.best1_mesh.translate(c, relative=False)
-        self.best1_mesh.translate(mean, relative=True)
-
-        c = np.array(poses.points)[lowest_id]
-        c[2] = -c[2]  # Invert depth
-        c = c * var * 2  # De-normalize center
-        self.best2_mesh.translate(c, relative=False)
-        self.best2_mesh.translate(mean, relative=True)
-
-        inverted_pose = self.coords_rot[highest_id]  # TODO VERIFY
-        inverted_pose = -inverted_pose  # TODO VERIFY
-        R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, inverted_pose)  # TODO VERIFY
-        self.best1_mesh.rotate(R1)
-        self.best1_rot = R1 @ self.best1_rot
-        self.best1_rot = self.best1_rot / np.linalg.norm(self.best1_rot)
-        # TODO EXPERIMENT
-        R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, inverted_pose)  # TODO VERIFY
-        # TODO END EXPERIMENT
-
-        R2 = FromPartialToPose.create_rotation_matrix(self.best2_rot, self.coords_rot[lowest_id])
-        self.best2_mesh.rotate(R2)
-        self.best2_rot = R2 @ self.best2_rot
-        self.best2_rot = self.best2_rot / np.linalg.norm(self.best2_rot)
-
-        self.vis.update_geometry(self.best1_mesh)
-        self.vis.update_geometry(self.best2_mesh)
-
-        # Update visualizer
-        self.vis.poll_events()
-        self.vis.update_renderer()
-
-        # Return results
-        xyz_left = np.array(poses.points)[highest_id]
-        xyz_left[2] = -xyz_left[2]  # Invert depth
-        xyz_left = xyz_left * var * 2  # De-normalize center
-
-        xyz_right = np.array(poses.points)[lowest_id]
-        xyz_right[2] = -xyz_right[2]  # Invert depth
-        xyz_right = xyz_right * var * 2  # De-normalize center
-
-        # self.complete_pc.estimate_normals()  # TODO REMOVE
-        # self.complete_pc.orient_normals_consistent_tangent_plane(5)  # TODO REMOVE
-        # #
-        # g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
-        #                         o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)]
-        # o3d.visualization.draw_geometries(g)
-
-        return xyz_left, self.coords_rot[highest_id], xyz_right, self.coords_rot[lowest_id]
-
-        # Visualize point cloud vision from robot's perspective
-        # rgb = np.array(self.vis.capture_screen_float_buffer())
-        # rgb = cv2.resize(rgb, (320, 240))
-        # cv2.imshow("PC", rgb)
-
-        # TODO REMOVE DEBUG
-        # g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
-        #                         o3d.geometry.TriangleMesh.create_coordinate_frame()]
-        # o3d.visualization.draw_geometries(g)
-
-        # o3d.visualization.draw_geometries([depth_pc, self.partial_pc])
-
-        # o3d.visualization.draw_geometries([self.complete_pc, depth_pc, o3d.geometry.TriangleMesh.create_coordinate_frame()])
-
-
-def fp_sampling(points, num, starting_point=None):
-    batch_size = points.shape[0]
-    # If no starting_point is provided, the starting point is the first point of points
-    if starting_point is None:
-        starting_point = points[:, 0].unsqueeze(1)
-    D = cdist(starting_point, points).squeeze(1)
-
-    perm = torch.zeros((batch_size, num), dtype=torch.int32, device=points.device)
-    ds = D
-    for i in range(0, num):
-        idx = torch.argmax(ds, dim=1)
-        perm[:, i] = idx
-        ds = torch.minimum(ds, cdist(points[torch.arange(batch_size), idx].unsqueeze(1), points).squeeze())
-
-    return perm
-
-
-class iCubGazebo:
-
-    def __init__(self, rgb_port="/icubSim/cam/left/rgbImage:o", depth_port='/icubSim/cam/left/depthImage:o'):
-        yarp.Network.init()
-
-        # Create a port and connect it to the iCub simulator virtual camera
-        self.rgb_port, self.depth_port = yarp.Port(), yarp.Port()
-        self.rgb_port.open("/rgb-port")
-        self.depth_port.open("/depth-port")
-        yarp.Network.connect(rgb_port, "/rgb-port")
-        yarp.Network.connect(depth_port, "/depth-port")
-
-        self.rgb_array = np.zeros((240, 320, 3), dtype=np.uint8)
-        self.rgb_image = yarp.ImageRgb()
-        self.rgb_image.resize(320, 240)
-        self.rgb_image.setExternal(self.rgb_array, self.rgb_array.shape[1], self.rgb_array.shape[0])
-
-        self.depth_array = np.zeros((240, 320), dtype=np.float32)
-        self.depth_image = yarp.ImageFloat()
-        self.depth_image.resize(320, 240)
-        self.depth_image.setExternal(self.depth_array, self.depth_array.shape[1], self.depth_array.shape[0])
-
-    def read(self):
-        self.rgb_port.read(self.rgb_image)
-        self.depth_port.read(self.depth_image)
-
-        return self.rgb_array[..., ::-1], self.depth_array
-
-
 class FromPartialToPose:
-    def __init__(self, model, grid_res):
+    def __init__(self, model, grid_res, device="cuda"):
         self.model = model
         self.grid_res = grid_res
+        self.device = device
 
     @staticmethod
     def create_rotation_matrix(a, b):
@@ -301,6 +44,65 @@ class FromPartialToPose:
         R = np.eye(3) + vx + np.dot(vx, vx) * (1 / (1 + c))
         return R
 
+    def refine_point_cloud(self, complete_pc, fast_weights, partial_pc, n=10, show_loss=False):
+        """
+        Uses adversarial attack to refine the generated complete point cloud
+        Args:
+            complete_pc: torch.Tensor(N, 3)
+            fast_weights: List ( List ( Tensor ) )
+            partial_pc: torch.Tensor(N, 3)
+            n: Int, number of adversarial steps
+        Returns:
+            pc: PointCloud
+        """
+        complete_pc = complete_pc.unsqueeze(0)  # add batch dimension
+        complete_pc.requires_grad = True
+        partial_pc = partial_pc.unsqueeze(0)  # add batch dimension
+        complete_pc_0 = copy.deepcopy(complete_pc)
+
+        loss_function = BCEWithLogitsLoss(reduction='mean')
+        optim = SGD([complete_pc], lr=0.5, momentum=0.9)
+
+        c1, c2, c3 = 1, 0, 0  # 1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
+        for step in range(n):
+            results = self.model.sdf(complete_pc, fast_weights)
+
+            gt = torch.ones_like(results[..., 0], dtype=torch.float32)
+            gt[:, :] = 1
+            loss1 = c1 * loss_function(results[..., 0], gt)
+            loss2 = c2 * torch.mean((complete_pc - complete_pc_0) ** 2)
+            loss3 = c3 * torch.mean(cdist(complete_pc, partial_pc).sort(dim=2)[0][:, :,
+                                    0])  # it works but it would be nicer to do the opposite
+            loss_value = loss1 + loss2 + loss3
+
+            self.model.zero_grad()
+            optim.zero_grad()
+            loss_value.backward(inputs=[complete_pc])
+            optim.step()
+            if show_loss:
+                print('Loss ', loss_value.item())
+
+        pc = PointCloud()
+        pc.points = Vector3dVector(complete_pc.squeeze(0).detach().cpu())
+        return pc
+
+    @staticmethod
+    def estimate_normals(pc, n=5):
+        """
+        It estimates the normal of the point cloud. This function could be computationally expensive
+        Args:
+            pc: PointCloud
+            n: Number of points for the knn algorithm to build the graph which estimates the tangents
+            show_time: If True, this function outputs the number of time used to do the function
+
+        Returns:
+
+        """
+        start = time.time()
+        pc.estimate_normals()
+        pc.orient_normals_consistent_tangent_plane(n)
+        return pc
+
     def reconstruct_point_cloud(self, partial):
         """
         Given a partial point cloud, it reconstructs it
@@ -308,36 +110,19 @@ class FromPartialToPose:
             partial: np.array(N, 3)
 
         Returns:
-            complete: o3d.Geometry.PointCloud with estimated normals
+            selected: Torch.Tensor(N, 3)
+            fast_weights: List( List( Torch.Tensor ) )
         """
         # Inference
-        partial = torch.FloatTensor(partial).unsqueeze(0).to(device)
-        prediction = self.model(partial, step=self.grid_res)  # TODO step SHOULD BE 0.01
+        partial = torch.FloatTensor(partial).unsqueeze(0).to(self.device)
+        prediction, fast_weights, samples = self.model(partial, step=self.grid_res)  # TODO step SHOULD BE 0.01
 
         # Get the selected point on the grid
-        prediction = prediction.squeeze(0).squeeze(-1).detach().cpu().numpy()
-        samples = create_3d_grid(batch_size=partial.shape[0], step=self.grid_res)  # TODO we create grid two times...
-        samples = samples.squeeze(0).detach().cpu().numpy()
+        prediction = prediction.squeeze(0).squeeze(-1).detach()
+        samples = samples.squeeze(0).detach()
         selected = samples[prediction > 0.5]
-        pred_pc = PointCloud()
-        pred_pc.points = Vector3dVector(selected)
 
-        #TODO START EXPERIMENT
-        pred_pc = pred_pc.random_down_sample(0.1)
-        # start = time.time()
-        # pred_pc.estimate_normals()
-        # pred_pc.orient_normals_consistent_tangent_plane(10)
-        # print("EXPERIMENTING NORMALs: {}".format(time.time() - start))
-        # o3d.visualization.draw_geometries([pred_pc])
-        #TODO END EXPERIMENT
-
-        # Estimate normals
-        # start = time.time()
-        pred_pc.estimate_normals()
-        pred_pc.orient_normals_consistent_tangent_plane(5)
-        # print("Estimate normals: {}".format(time.time() - start))
-
-        return pred_pc
+        return selected, fast_weights
 
     def find_poses(self, pc, mult_res=4, n_points=10, iterations=100, debug=False):
         """
