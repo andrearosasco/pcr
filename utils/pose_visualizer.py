@@ -1,17 +1,55 @@
+import math
 import time
 import random
 import open3d as o3d
 import numpy as np
-from open3d.cpu.pybind.geometry import PointCloud
-from open3d.cpu.pybind.utility import Vector3dVector
-from open3d.cpu.pybind.visualization import Visualizer
 from frompartialtopose import FromPartialToPose
-from main import HyperNetwork
-from configs.server_config import ModelConfig
+from scipy.spatial.transform import Rotation
+
+try:
+    from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
+    from open3d.cuda.pybind.visualization import draw_geometries, Visualizer
+    from open3d.cuda.pybind.geometry import PointCloud
+except ImportError:
+    print("Open3d CUDA not found!")
+    from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
+    from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
+    from open3d.cpu.pybind.geometry import PointCloud
+
+
+def dot_product(x, y):
+    return sum([x[i] * y[i] for i in range(len(x))])
+
+
+def norm(x):
+    return math.sqrt(dot_product(x, x))
+
+
+def normalize(x):
+    return [x[i] / norm(x) for i in range(len(x))]
+
+
+def project_onto_plane(x, n):
+    d = dot_product(x, n) / norm(n)
+    p = [d * normalize(n)[i] for i in range(len(n))]
+    return [x[i] - p[i] for i in range(len(x))]
+
+
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+
+def angle_between(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+    """
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
 class PoseVisualizer:
-    def __init__(self, device="cuda", res=0.01):
+    def __init__(self, device="cuda"):
 
         # Random seed
         random.seed(int(time.time()))
@@ -19,12 +57,6 @@ class PoseVisualizer:
 
         # Class parameters
         self.device = device
-        self.res = res
-        # Pose generator
-        model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
-        model = model.to(device)
-        model.eval()
-        self.generator = FromPartialToPose(model, res, device)
 
         # Set up visualizer
         self.vis = Visualizer()
@@ -40,77 +72,58 @@ class PoseVisualizer:
         # Camera TODO ROTATE
         self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
         # Coords
-        self.best1_rot = None
-        self.best2_rot = None
-        self.best1_mesh = None
-        self.best2_mesh = None
         self.coords_mesh = None
         self.coords_rot = None
+        self.verts_rot = None
 
     def reset_coords(self):
-        self.vis.remove_geometry(self.best1_mesh)
-        self.vis.remove_geometry(self.best2_mesh)
+        """
+        It resets coordinate frames, useful between one example and the next one, or to easily move camera
+        Returns: None
+        """
         if self.coords_mesh is not None:
             for coord in self.coords_mesh:
                 self.vis.remove_geometry(coord)
 
-        self.best1_rot = np.array([0, 0, 1])
-        self.best2_rot = np.array([0, 0, 1])
-        self.best1_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-        self.best2_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-        self.vis.add_geometry(self.best1_mesh)
-        self.vis.add_geometry(self.best2_mesh)
-
         self.coords_mesh = []
         self.coords_rot = []
-        for _ in range(6):
-            coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+        self.verts_rot = []
+        for _ in range(2):
+            coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
             self.coords_mesh.append(coord)
             self.coords_rot.append(np.array([0, 0, 1]))
+            self.verts_rot.append(np.array([0, 1, 0]))
             self.vis.add_geometry(coord)
 
-    def run(self, partial_points, mean=(0, 0, 0), var=1, depth_pc=None):
+    def run(self, partial_pc_aux, complete_pc_aux, poses, mean=(0, 0, 0), var=1, depth_pc=None):
+        """
+        It visualizes the results, given all the elements
+        Args:
+            partial_pc_aux: PointCloud, the partial one
+            complete_pc_aux: PointCloud, the complete one
+            poses: Tuple(np.array(3), np.array(3), np.array(3), np.array(3)), which are respectively first best center,
+                first best normal, second best center, second best normal
+            mean: np.array(3), the mean of the real partial point cloud
+            var: Int, the variance of the real partial point cloud
+            depth_pc: Point Cloud, the point cloud directly reconstructed from the depth image
 
-        partial_points = np.array(partial_points)  # From list to array
-        partial_pc_aux = PointCloud()
-        partial_pc_aux.points = Vector3dVector(partial_points)
+        Returns: None
+        """
 
-        # Reconstruct partial point cloud
-        start = time.time()
-        complete_pc_aux, fast_weights = self.generator.reconstruct_point_cloud(partial_points)
-        print("Reconstruct: {}".format(time.time() - start))
-
-        start = time.time()
-        complete_pc_aux = self.generator.refine_point_cloud(complete_pc_aux, fast_weights, partial_points, n=0,
-                                                            show_loss=False)
-        print("Refine: {}".format(time.time() - start))
-
-        complete_pc_aux = complete_pc_aux.voxel_down_sample(self.res*2)  # Reduce dimension of the point cloud
-
-        start = time.time()
-        complete_pc_aux = self.generator.estimate_normals(complete_pc_aux)
-        print("Estimate normals: {}".format(time.time() - start))
-
-        start = time.time()
-        poses = self.generator.find_poses(complete_pc_aux, mult_res=1.5, n_points=100, iterations=1000, debug=False)
-        print("Find poses: {}".format(time.time() - start))
+        best_centers = (poses[0], poses[2])
+        best_normals = (poses[1], poses[3])
 
         # Orient poses
         new_coords_rot = []
-        highest_value = 0
-        highest_id = -1
-        lowest_value = 0
-        lowest_id = -1
+        new_verts_rot = []
         i = 0
-        for c, normal, coord_rot, coord_mesh in zip(np.array(poses.points), np.array(poses.normals),
-                                                    self.coords_rot, self.coords_mesh):
-
+        for c, normal, coord_rot, coord_mesh, vert_rot in zip(best_centers, best_normals,
+                                                              self.coords_rot, self.coords_mesh, self.verts_rot):
             c[2] = -c[2]  # Invert depth
             normal[2] = -normal[2]  # Invert normal in depth dimension
-            c = c*var*2  # De-normalize center
+            c = c * var * 2  # De-normalize center
 
             coord_mesh.translate(c, relative=False)
-            normal = normal / np.linalg.norm(normal)
             R = FromPartialToPose.create_rotation_matrix(coord_rot, normal)
             coord_mesh.rotate(R, center=c)
 
@@ -118,17 +131,37 @@ class PoseVisualizer:
 
             self.vis.update_geometry(coord_mesh)
             new_coord_rot = (R @ coord_rot) / np.linalg.norm(R @ coord_rot)
-            new_coords_rot.append(new_coord_rot)
 
-            if normal[0] > highest_value:
-                highest_value = normal[0]
-                highest_id = i
-            if normal[0] < lowest_value:
-                lowest_value = normal[0]
-                lowest_id = i
+            # TODO Rotate also y axis
+            new_vert_rot = (R @ vert_rot) / np.linalg.norm(R @ vert_rot)
+
+            # Project y axis over the plane
+            projected = project_onto_plane(np.array([0, -1, 0]), normal)
+            projected = np.array(projected)
+
+            # Compute angle between projected y axe and actual y axe
+            rotation_radians = angle_between(new_vert_rot, projected)
+            sign = np.sign(np.cross(new_vert_rot, projected))
+
+            # Create rotation matrix of rotation_radians around the transformed z vector
+            rotation_vector = new_coord_rot * rotation_radians * sign
+            R = Rotation.from_rotvec(rotation_vector).as_matrix()
+
+            # Rotate mesh
+            coord_mesh.translate(c, relative=False)
+            coord_mesh.rotate(R, center=c)
+            coord_mesh.translate(mean, relative=True)  # Translate coord as the point cloud
+            self.vis.update_geometry(coord_mesh)
+
+            # Compute and update new z and y position
+            new_vert_rot = (R @ new_vert_rot) / np.linalg.norm(R @ new_vert_rot)
+            new_coord_rot = (R @ new_coord_rot) / np.linalg.norm(R @ new_coord_rot)
+            new_verts_rot.append(new_vert_rot)
+            new_coords_rot.append(new_coord_rot)
 
             i += 1
         self.coords_rot = new_coords_rot
+        self.verts_rot = new_verts_rot
 
         # Update partial point cloud in visualizer
         # NOTE: this point cloud (after the de normalization) overlaps with the point cloud reconstructed from the depth
@@ -141,7 +174,7 @@ class PoseVisualizer:
         inverted[..., 2] = -inverted[..., 2]
         self.partial_pc.points = Vector3dVector(inverted)
         # De-normalize
-        self.partial_pc.scale(var*2, center=[0, 0, 0])
+        self.partial_pc.scale(var * 2, center=[0, 0, 0])
         self.partial_pc.translate(mean)
         self.vis.update_geometry(self.partial_pc)
 
@@ -155,73 +188,10 @@ class PoseVisualizer:
         inverted[..., 2] = -inverted[..., 2]
         self.complete_pc.points = Vector3dVector(inverted)
         # De-normalize
-        self.complete_pc.scale(var*2, center=[0, 0, 0])
+        self.complete_pc.scale(var * 2, center=[0, 0, 0])
         self.complete_pc.translate(mean)
         self.vis.update_geometry(self.complete_pc)
-
-        # Update best points
-        c = np.array(poses.points)[highest_id]
-        c[2] = -c[2]  # Invert depth
-        c = c * var * 2  # De-normalize center
-        self.best1_mesh.translate(c, relative=False)
-        self.best1_mesh.translate(mean, relative=True)
-
-        c = np.array(poses.points)[lowest_id]
-        c[2] = -c[2]  # Invert depth
-        c = c * var * 2  # De-normalize center
-        self.best2_mesh.translate(c, relative=False)
-        self.best2_mesh.translate(mean, relative=True)
-
-        inverted_pose = self.coords_rot[highest_id]  # TODO VERIFY
-        inverted_pose = -inverted_pose  # TODO VERIFY
-        R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, inverted_pose)  # TODO VERIFY
-        self.best1_mesh.rotate(R1)
-        self.best1_rot = R1 @ self.best1_rot
-        self.best1_rot = self.best1_rot / np.linalg.norm(self.best1_rot)
-        # TODO EXPERIMENT
-        R1 = FromPartialToPose.create_rotation_matrix(self.best1_rot, inverted_pose)  # TODO VERIFY
-        # TODO END EXPERIMENT
-
-        R2 = FromPartialToPose.create_rotation_matrix(self.best2_rot, self.coords_rot[lowest_id])
-        self.best2_mesh.rotate(R2)
-        self.best2_rot = R2 @ self.best2_rot
-        self.best2_rot = self.best2_rot / np.linalg.norm(self.best2_rot)
-
-        self.vis.update_geometry(self.best1_mesh)
-        self.vis.update_geometry(self.best2_mesh)
 
         # Update visualizer
         self.vis.poll_events()
         self.vis.update_renderer()
-
-        # Return results
-        xyz_left = np.array(poses.points)[highest_id]
-        xyz_left[2] = -xyz_left[2]  # Invert depth
-        xyz_left = xyz_left * var * 2  # De-normalize center
-
-        xyz_right = np.array(poses.points)[lowest_id]
-        xyz_right[2] = -xyz_right[2]  # Invert depth
-        xyz_right = xyz_right * var * 2  # De-normalize center
-
-        # self.complete_pc.estimate_normals()  # TODO REMOVE
-        # self.complete_pc.orient_normals_consistent_tangent_plane(5)  # TODO REMOVE
-        # #
-        # g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
-        #                         o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)]
-        # o3d.visualization.draw_geometries(g)
-
-        return xyz_left, self.coords_rot[highest_id], xyz_right, self.coords_rot[lowest_id]
-
-        # Visualize point cloud vision from robot's perspective
-        # rgb = np.array(self.vis.capture_screen_float_buffer())
-        # rgb = cv2.resize(rgb, (320, 240))
-        # cv2.imshow("PC", rgb)
-
-        # TODO REMOVE DEBUG
-        # g = self.coords_mesh + [self.best1_mesh, self.best2_mesh, self.partial_pc, self.complete_pc,
-        #                         o3d.geometry.TriangleMesh.create_coordinate_frame()]
-        # o3d.visualization.draw_geometries(g)
-
-        # o3d.visualization.draw_geometries([depth_pc, self.partial_pc])
-
-        # o3d.visualization.draw_geometries([self.complete_pc, depth_pc, o3d.geometry.TriangleMesh.create_coordinate_frame()])

@@ -11,7 +11,7 @@ import time
 from utils.misc import sample_point_cloud, sample_point_cloud2
 
 
-def gen_box(min_side=0.05, max_side=0.4):
+def gen_box(min_side=0.1, max_side=0.4):
     sizes = []
     for i in range(3):
         sizes.append(random.uniform(min_side, max_side))
