@@ -3,6 +3,8 @@ import time
 import random
 import open3d as o3d
 import numpy as np
+from open3d.cpu.pybind.camera import PinholeCameraParameters
+
 from frompartialtopose import FromPartialToPose
 from scipy.spatial.transform import Rotation
 
@@ -12,9 +14,9 @@ try:
     from open3d.cuda.pybind.geometry import PointCloud
 except ImportError:
     print("Open3d CUDA not found!")
-    from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
+    from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector, Vector2iVector
     from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
-    from open3d.cpu.pybind.geometry import PointCloud
+    from open3d.cpu.pybind.geometry import PointCloud, LineSet
 
 
 def dot_product(x, y):
@@ -60,7 +62,7 @@ class PoseVisualizer:
 
         # Set up visualizer
         self.vis = Visualizer()
-        self.vis.create_window()
+        self.vis.create_window(width=1920, height=1080)
         # Complete point cloud
         self.complete_pc = PointCloud()
         self.complete_pc.points = Vector3dVector(np.random.randn(2348, 3))
@@ -70,9 +72,11 @@ class PoseVisualizer:
         self.partial_pc.points = Vector3dVector(np.random.randn(2024, 3))
         self.vis.add_geometry(self.partial_pc)
         # Camera TODO ROTATE
-        # self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
+        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3))
         # Coords
         self.coords_mesh = None
+        self.line = LineSet()
+        self.vis.add_geometry(self.line)
 
     def reset_coords(self):
         """
@@ -80,7 +84,15 @@ class PoseVisualizer:
         Returns: None
         """
         # TODO POSITION CAMERA
-        self.vis.
+        dist = 1.5
+        camera_parameters = PinholeCameraParameters()
+        camera_parameters.extrinsic = np.array([[1, 0, 0, 0],
+                                                [0, 1, 0, 0],
+                                                [0, 0, 1, 1000],
+                                                [0, 0, 0, 1]])
+        camera_parameters.intrinsic.set_intrinsics(width=1920, height=1080, fx=1000, fy=1000, cx=959.5, cy=539.5)
+        control = self.vis.get_view_control()
+        control.convert_from_pinhole_camera_parameters(camera_parameters, True)
 
         if self.coords_mesh is not None:
             for coord in self.coords_mesh:
@@ -113,7 +125,6 @@ class PoseVisualizer:
         # Orient poses
         i = 0
         for c, normal, coord_mesh in zip(best_centers, best_normals, self.coords_mesh):
-
             coord_mesh_ = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
 
             c[2] = -c[2]  # Invert depth
@@ -123,28 +134,42 @@ class PoseVisualizer:
             coord_mesh_.translate(c, relative=False)
             R = FromPartialToPose.create_rotation_matrix(np.array([0, 0, 1]), normal)
             coord_mesh_.rotate(R, center=c)
-
             coord_mesh_.translate(mean, relative=True)  # Translate coord as the point cloud
 
             # TODO Rotate also y axis
-            # new_vert_rot = (R @ np.array([0, 1, 0])) / np.linalg.norm(R @ np.array([0, 1, 0]))
-            #
-            # # Project y axis over the plane
-            # projected = project_onto_plane(np.array([0, -1, 0]), normal)
-            # projected = np.array(projected)
-            #
-            # # Compute angle between projected y axe and actual y axe
-            # rotation_radians = angle_between(new_vert_rot, projected)
-            # sign = np.sign(np.cross(new_vert_rot, projected))
-            #
-            # # Create rotation matrix of rotation_radians around the transformed z vector
-            # rotation_vector = normal * rotation_radians * sign
-            # R = Rotation.from_rotvec(rotation_vector).as_matrix()
-            #
-            # # Rotate mesh
-            # coord_mesh_.translate(c, relative=False)
-            # coord_mesh_.rotate(R, center=c)
-            # coord_mesh_.translate(mean, relative=True)  # Translate coord as the point cloud
+            new_vert_rot = (R @ np.array([0, 1, 0])) / np.linalg.norm(R @ np.array([0, 1, 0]))
+
+            # Project y axis over the plane
+            projected = project_onto_plane(np.array([0, -1, 0]), normal)
+            projected = np.array(projected) / np.linalg.norm(projected)
+
+            # # TODO REMOVE DEBUG
+            # points = np.zeros((2, 3))
+            # points[0] = projected
+            # points[1] = c
+            # self.line.points = Vector3dVector(points)
+            # self.line.lines = Vector2iVector(np.array([[0, 1]]))
+            # self.vis.update_geometry(self.line)
+            # # TODO REMOVE DEBUG
+
+            # Compute angle between projected y axe and actual y axe
+            n = np.cross(new_vert_rot, projected) / np.linalg.norm(np.cross(new_vert_rot, projected))
+            sign = 1 if abs(np.sum(n - normal)) < 1e-8 else -1
+            rotation_radians = angle_between(new_vert_rot, projected) * sign
+            print(np.degrees(rotation_radians))
+
+            # Rotate mesh
+            C = np.array([[0, -normal[2], normal[1]],
+                          [normal[2], 0, -normal[0]],
+                          [-normal[1], normal[0], 0]])
+            R = np.eye(3) + C * np.sin(rotation_radians) + C@C * (1 - np.cos(rotation_radians))
+            coord_mesh_.translate(c, relative=False)
+            coord_mesh_.rotate(R, center=c)
+            coord_mesh_.translate(mean, relative=True)  # Translate coord as the point cloud
+
+            rotation_radians = angle_between(R @ new_vert_rot, projected) * sign
+            print(np.degrees(rotation_radians))
+            # TODO Rotate also y axis
 
             coord_mesh.triangles = coord_mesh_.triangles
             coord_mesh.vertices = coord_mesh_.vertices
