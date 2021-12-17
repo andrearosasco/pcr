@@ -10,7 +10,7 @@ import time
 
 from utils.misc import sample_point_cloud, sample_point_cloud2
 
-
+#  0.1 0.4
 def gen_box(min_side=0.1, max_side=0.4):
     sizes = []
     for i in range(3):
@@ -62,6 +62,7 @@ class BoxNet(data.Dataset):
         var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
 
         partial_pcd = partial_pcd / (var * 2)
+        # partial_pcd = partial_pcd / 2080  # TODO AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAA
 
         # Move the mesh so that it matches the partial point cloud position
         # (the [0, 0, 1] is to compensate for the fact that the partial pc is in the camera frame)

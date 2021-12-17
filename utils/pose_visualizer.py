@@ -70,29 +70,26 @@ class PoseVisualizer:
         self.partial_pc.points = Vector3dVector(np.random.randn(2024, 3))
         self.vis.add_geometry(self.partial_pc)
         # Camera TODO ROTATE
-        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
+        # self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
         # Coords
         self.coords_mesh = None
-        self.coords_rot = None
-        self.verts_rot = None
 
     def reset_coords(self):
         """
         It resets coordinate frames, useful between one example and the next one, or to easily move camera
         Returns: None
         """
+        # TODO POSITION CAMERA
+        self.vis.
+
         if self.coords_mesh is not None:
             for coord in self.coords_mesh:
                 self.vis.remove_geometry(coord)
 
         self.coords_mesh = []
-        self.coords_rot = []
-        self.verts_rot = []
         for _ in range(2):
             coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
             self.coords_mesh.append(coord)
-            self.coords_rot.append(np.array([0, 0, 1]))
-            self.verts_rot.append(np.array([0, 1, 0]))
             self.vis.add_geometry(coord)
 
     def run(self, partial_pc_aux, complete_pc_aux, poses, mean=(0, 0, 0), var=1, depth_pc=None):
@@ -114,54 +111,47 @@ class PoseVisualizer:
         best_normals = (poses[1], poses[3])
 
         # Orient poses
-        new_coords_rot = []
-        new_verts_rot = []
         i = 0
-        for c, normal, coord_rot, coord_mesh, vert_rot in zip(best_centers, best_normals,
-                                                              self.coords_rot, self.coords_mesh, self.verts_rot):
+        for c, normal, coord_mesh in zip(best_centers, best_normals, self.coords_mesh):
+
+            coord_mesh_ = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+
             c[2] = -c[2]  # Invert depth
             normal[2] = -normal[2]  # Invert normal in depth dimension
             c = c * var * 2  # De-normalize center
 
-            coord_mesh.translate(c, relative=False)
-            R = FromPartialToPose.create_rotation_matrix(coord_rot, normal)
-            coord_mesh.rotate(R, center=c)
+            coord_mesh_.translate(c, relative=False)
+            R = FromPartialToPose.create_rotation_matrix(np.array([0, 0, 1]), normal)
+            coord_mesh_.rotate(R, center=c)
 
-            coord_mesh.translate(mean, relative=True)  # Translate coord as the point cloud
-
-            self.vis.update_geometry(coord_mesh)
-            new_coord_rot = (R @ coord_rot) / np.linalg.norm(R @ coord_rot)
+            coord_mesh_.translate(mean, relative=True)  # Translate coord as the point cloud
 
             # TODO Rotate also y axis
-            new_vert_rot = (R @ vert_rot) / np.linalg.norm(R @ vert_rot)
+            # new_vert_rot = (R @ np.array([0, 1, 0])) / np.linalg.norm(R @ np.array([0, 1, 0]))
+            #
+            # # Project y axis over the plane
+            # projected = project_onto_plane(np.array([0, -1, 0]), normal)
+            # projected = np.array(projected)
+            #
+            # # Compute angle between projected y axe and actual y axe
+            # rotation_radians = angle_between(new_vert_rot, projected)
+            # sign = np.sign(np.cross(new_vert_rot, projected))
+            #
+            # # Create rotation matrix of rotation_radians around the transformed z vector
+            # rotation_vector = normal * rotation_radians * sign
+            # R = Rotation.from_rotvec(rotation_vector).as_matrix()
+            #
+            # # Rotate mesh
+            # coord_mesh_.translate(c, relative=False)
+            # coord_mesh_.rotate(R, center=c)
+            # coord_mesh_.translate(mean, relative=True)  # Translate coord as the point cloud
 
-            # Project y axis over the plane
-            projected = project_onto_plane(np.array([0, -1, 0]), normal)
-            projected = np.array(projected)
+            coord_mesh.triangles = coord_mesh_.triangles
+            coord_mesh.vertices = coord_mesh_.vertices
 
-            # Compute angle between projected y axe and actual y axe
-            rotation_radians = angle_between(new_vert_rot, projected)
-            sign = np.sign(np.cross(new_vert_rot, projected))
-
-            # Create rotation matrix of rotation_radians around the transformed z vector
-            rotation_vector = new_coord_rot * rotation_radians * sign
-            R = Rotation.from_rotvec(rotation_vector).as_matrix()
-
-            # Rotate mesh
-            coord_mesh.translate(c, relative=False)
-            coord_mesh.rotate(R, center=c)
-            coord_mesh.translate(mean, relative=True)  # Translate coord as the point cloud
             self.vis.update_geometry(coord_mesh)
 
-            # Compute and update new z and y position
-            new_vert_rot = (R @ new_vert_rot) / np.linalg.norm(R @ new_vert_rot)
-            new_coord_rot = (R @ new_coord_rot) / np.linalg.norm(R @ new_coord_rot)
-            new_verts_rot.append(new_vert_rot)
-            new_coords_rot.append(new_coord_rot)
-
             i += 1
-        self.coords_rot = new_coords_rot
-        self.verts_rot = new_verts_rot
 
         # Update partial point cloud in visualizer
         # NOTE: this point cloud (after the de normalization) overlaps with the point cloud reconstructed from the depth

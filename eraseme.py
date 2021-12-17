@@ -1,43 +1,37 @@
-from threading import Thread
+import numpy as np
+from open3d.cpu.pybind.geometry import TriangleMesh, PointCloud
+from open3d.cpu.pybind.utility import Vector3dVector
+from open3d.cpu.pybind.visualization import Visualizer
 
-import open3d.cpu.pybind.geometry
+vis = Visualizer()
+vis.create_window()
 
-try:
-    from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
-    from open3d.cuda.pybind.visualization import draw_geometries, Visualizer
-    from open3d.cuda.pybind.geometry import PointCloud, TriangleMesh
-except ImportError:
-    print("Open3d CUDA not found!")
-    from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
-    from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
-    from open3d.cpu.pybind.geometry import PointCloud, TriangleMesh
+coord = TriangleMesh().create_coordinate_frame(origin=np.random.rand(3))
 
+# pc = PointCloud()
+# pc.points = Vector3dVector(np.random.rand(100, 3))
 
-def threaded_function():
-    try:
-        from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
-        from open3d.cuda.pybind.visualization import draw_geometries, Visualizer
-        from open3d.cuda.pybind.geometry import PointCloud
-    except ImportError:
-        print("Open3d CUDA not found!")
-        from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
-        from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
-        from open3d.cpu.pybind.geometry import PointCloud
+# vis.add_geometry(pc)
+vis.add_geometry(coord)
 
-    while True:
-        vis = Visualizer()
-        vis.create_window(visible=False)
-        vis.add_geometry(TriangleMesh.create_sphere())
-        pass
+while True:
 
+    # pc.clear()
+    #
+    # pc_ = PointCloud()
+    # pc_.points = Vector3dVector(np.random.rand(100, 3))
+    #
+    # pc += pc_
+    #
+    # vis.update_geometry(pc)
 
-if __name__ == "__main__":
-    thread1 = Thread(target=threaded_function)
-    thread2 = Thread(target=threaded_function)
-    thread3 = Thread(target=threaded_function)
+    coord_ = TriangleMesh().create_coordinate_frame(origin=np.random.rand(3))
 
-    thread1.start()
-    thread2.start()
-    thread3.start()
+    coord.vertices = coord_.vertices
+    coord.triangles = coord_.triangles
 
-    print("thread finished...exiting")
+    vis.update_geometry(coord)
+
+    vis.poll_events()
+    vis.update_renderer()
+
