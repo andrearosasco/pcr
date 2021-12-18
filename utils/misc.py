@@ -9,6 +9,8 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
+from torch import cdist
+
 try:
     from open3d.cuda.pybind.geometry import PointCloud
     from open3d.cuda.pybind.utility import Vector3dVector
@@ -414,7 +416,6 @@ def get_ptcloud_img(ptcloud):
     return img
 
 
-
 def create_3d_grid(min_value=-0.5, max_value=0.5, step=0.04, batch_size=1):
     x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     y_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
@@ -443,4 +444,19 @@ def check_mesh_contains(meshes, queries, tolerance=0.01):
     return occupancies
 
 
+def fp_sampling(points, num, starting_point=None):
+    batch_size = points.shape[0]
+    # If no starting_point is provided, the starting point is the first point of points
+    if starting_point is None:
+        starting_point = points[:, 0].unsqueeze(1)
+    D = cdist(starting_point, points).squeeze(1)
+
+    perm = torch.zeros((batch_size, num), dtype=torch.int32, device=points.device)
+    ds = D
+    for i in range(0, num):
+        idx = torch.argmax(ds, dim=1)
+        perm[:, i] = idx
+        ds = torch.minimum(ds, cdist(points[torch.arange(batch_size), idx].unsqueeze(1), points).squeeze())
+
+    return perm
 

@@ -19,6 +19,7 @@ import torch
 import open3d as o3d
 from utils.input import RealSense
 from utils.misc import create_3d_grid, check_mesh_contains
+import os
 
 #####################################################
 ########## Output/Input Space Boundaries ############
@@ -35,7 +36,7 @@ line_set.lines = o3d.utility.Vector2iVector(lines)
 #####################################################
 ############# Model and Camera Setup ################
 #####################################################
-model = HyperNetwork.load_from_checkpoint('checkpoint/best', config=ModelConfig)
+model = HyperNetwork.load_from_checkpoint('..' + os.sep + 'checkpoint' + os.sep + 'best', config=ModelConfig)
 model = model.to('cuda')
 model.eval()
 
@@ -104,7 +105,7 @@ prediction = prediction.squeeze(0).squeeze(-1).detach().cpu().numpy()
 ##################################################
 ################## Refinement ####################
 ##################################################
-# start = time.time()
+start = time.time()
 refined_pred = torch.tensor(samples[:, prediction >= 0.5, :].cpu().detach().numpy(), device=TrainConfig.device,
                             requires_grad=True)
 refined_pred_0 = copy.deepcopy(refined_pred.detach())
@@ -112,15 +113,16 @@ refined_pred_0 = copy.deepcopy(refined_pred.detach())
 loss_function = BCEWithLogitsLoss(reduction='mean')
 optim = SGD([refined_pred], lr=0.5, momentum=0.9)
 
-c1, c2, c3 = 1, 0, 0 #1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
-for step in range(0):
+c1, c2, c3 = 1, 0, 0  # 1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
+for step in range(3):
     results = model.sdf(refined_pred, fast_weights)
 
     gt = torch.ones_like(results[..., 0], dtype=torch.float32)
     gt[:, :] = 1
     loss1 = c1 * loss_function(results[..., 0], gt)
     loss2 = c2 * torch.mean((refined_pred - refined_pred_0) ** 2)
-    loss3 = c3 * torch.mean(cdist(refined_pred, model_input).sort(dim=2)[0][:, :, 0])  # it works but it would be nicer to do the opposite
+    loss3 = c3 * torch.mean(
+        cdist(refined_pred, model_input).sort(dim=2)[0][:, :, 0])  # it works but it would be nicer to do the opposite
     loss_value = loss1 + loss2 + loss3
 
     model.zero_grad()
@@ -136,6 +138,7 @@ for step in range(0):
     # refined_pred = torch.tensor(refined_pred.cpu().detach().numpy(), device=TrainConfig.device,
     #                             requires_grad=True)
 
+print("Refinement time: {}".format(time.time() - start))
 # ref_time += time.time() - start
 ##################################################
 ################# Visualization ##################
@@ -153,7 +156,6 @@ pred_pc.transform(t)
 part_pc = PointCloud()
 part_pc.points = Vector3dVector(full_pc)
 part_pc.paint_uniform_color([0, 1, 0])
-
 
 # print(f'read time - {read_time / 100}')
 # print(f'seg time - {seg_time / 100}')
