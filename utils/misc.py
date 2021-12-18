@@ -1,3 +1,5 @@
+import threading
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -430,11 +432,13 @@ def check_mesh_contains(meshes, queries, tolerance=0.01):
 
     for mesh, query in zip(meshes, queries):
         scene = o3d.t.geometry.RaycastingScene()
-        mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
-        _ = scene.add_triangles(mesh)
-        query_points = o3d.core.Tensor(query, dtype=o3d.core.Dtype.Float32)
+        # mesh = o3d.geometry.TriangleMesh.from_legacy(mesh)
+        _ = scene.add_triangles(o3d.pybind.core.Tensor(np.array(mesh.vertices, dtype=np.float32)),
+                                o3d.pybind.core.Tensor(np.array(mesh.triangles, dtype=np.uint32)))
+        query_points = o3d.pybind.core.Tensor(query.astype(np.float32))
         unsigned_distance = scene.compute_distance(query_points)
-        occupancies.append((unsigned_distance < tolerance).numpy())
+        occupancies.append((unsigned_distance.numpy() < tolerance))
+
     occupancies = np.stack(occupancies)[..., None]
     return occupancies
 

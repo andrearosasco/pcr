@@ -12,14 +12,15 @@ device = "cuda"
 
 @dataclass
 class DataConfig:
-    partial_points = 2024
+    dataset_path = "data/ShapeNetCore.v2"
+    partial_points = 2048
     multiplier_complete_sampling = 50
     # amount of noise added to the point sampled on the mesh
     # number of uniformly sampled points
     implicit_input_dimension = 8192
-    dist = [0.1, 0.9, 0]
-    noise_rate = 0.02
-    tolerance = 0.01
+    dist = [0.1, 0.4, 0.5]
+    noise_rate = 0.01
+    tolerance = 0.0
     train_samples = 10000
     val_samples = 100
 
@@ -76,4 +77,13 @@ class TrainConfig:
     overfit_mode = False
     # overfit_sample = "../data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
     # overfit_sample = "../pcr/data/ShapeNetCore.v2/02691156/1a9b552befd6306cc8f2d5fe7449af61/models/model_normalized.obj"
+
+@dataclass
+class EvalConfig:
+    grid_eval = False
     grid_res_step = 0.04
+    tolerance = DataConfig.tolerance
+    dist = DataConfig.dist
+    noise_rate = DataConfig.noise_rate
+
+    mb_size = 32
