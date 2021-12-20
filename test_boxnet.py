@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     for s in valid_set:
 
-        test.reset_coords()
+        # test.reset_coords()
 
         # for _ in tqdm.tqdm(range(100)):
         while True:

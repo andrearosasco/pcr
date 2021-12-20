@@ -3,12 +3,16 @@ import time
 import open3d as o3d
 import numpy as np
 import torch
+from PIL import Image
+
 from frompartialtopose import FromPartialToPose
 from main import HyperNetwork
 from utils.icub_gazebo_interface import iCubGazebo
 import cv2
+from utils.input import RealSense
 from utils.pose_visualizer import PoseVisualizer
 from configs.server_config import ModelConfig
+import pyrealsense2 as rs
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
@@ -39,30 +43,33 @@ if __name__ == "__main__":
     while True:
         # GET DEPTH IMAGE FROM GAZEBO AND CONVERT IT INTO A POINT CLOUD ################################################
         # Get image
-        rgb, depth = icub.read()
-        cv2.imshow('RGB', rgb)  # TODO VISUALIZE DEBUG
+        # rgb, depth = icub.read()
+        # cv2.imshow('RGB', rgb)  # TODO VISUALIZE DEBUG
+        # depth = cv2.imread("depth_test.png")
 
         # Get only red part
-        rgb_mask = rgb[..., 2] == 102  # Red is the last dimension
-        rgb_mask = rgb_mask.astype(float) * 255
+        # rgb_mask = rgb[..., 2] == 102  # Red is the last dimension
+        # rgb_mask = rgb_mask.astype(float) * 255
 
         # Get only depth of the box
-        filtered_depth = np.where(rgb_mask, depth, 0.)
-        filtered_depth_img = filtered_depth.astype(float) * 255
+        # filtered_depth = np.where(rgb_mask, depth, 0.)
+        # filtered_depth_img = filtered_depth.astype(float) * 255
 
         # Convert depth image to Point Cloud
-        fx = fy = 343.12110728152936
-        cx = 160.0
-        cy = 120.0
-        intrinsics = o3d.camera.PinholeCameraIntrinsic(320, 240, fx, fy, cx, cy)
-        partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(o3d.geometry.Image(filtered_depth), intrinsics)
+        # fx = fy = 343.12110728152936
+        # cx = 160.0
+        # cy = 120.0
+        # intrinsics = o3d.camera.PinholeCameraIntrinsic(320, 240, fx, fy, cx, cy)
+        # partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(o3d.geometry.Image(filtered_depth), intrinsics)
         # o3d.visualization.draw_geometries([partial_pcd, o3d.geometry.TriangleMesh.create_coordinate_frame()])
+        depth = np.array(Image.open(f'depth_test.png'), dtype=np.uint16)
+        partial_pcd = RealSense.pointcloud(depth)
 
         # Remove outliers (just one outlier can lead to bad results)
-        partial_pcd, ind = partial_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0, print_progress=False)
+        # partial_pcd, ind = partial_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0, print_progress=False)
 
         # Sample Point Cloud
-        part = torch.FloatTensor(np.array(partial_pcd.points))  # Must be 1, 2024, 3
+        part = torch.FloatTensor(partial_pcd)  # Must be 1, 2024, 3
         # indices = fp_sampling(part.unsqueeze(0), 2024)  # TODO THIS IS SLOW
         # part = part[indices.long().squeeze()]  # TODO THIS IS SLOW
         part = part[torch.randperm(part.size()[0])]  # TODO THIS IS FAST BUT LESS ACCURATE (?)
@@ -82,11 +89,6 @@ if __name__ == "__main__":
         # Reconstruct partial point cloud
         complete_pc_aux, fast_weights = generator.reconstruct_point_cloud(partial_points)
 
-        # TODO CHECK FIX:
-        # partial_points[..., -1] = -partial_points[..., -1]
-        # complete_pc_aux[..., -1] = -complete_pc_aux[..., -1]
-        # TODO END
-
         # Refine point cloud
         complete_pc_aux = generator.refine_point_cloud(complete_pc_aux, fast_weights, n=5, show_loss=False)
 
@@ -103,10 +105,8 @@ if __name__ == "__main__":
         partial_pc_aux = PointCloud()
         partial_pc_aux.points = Vector3dVector(partial_points)  # NOTE: not a bottleneck because only 2048 points
 
-        # o3d.visualization.draw_geometries([partial_pc_aux, complete_pc_aux,
-        #                                    o3d.geometry.TriangleMesh.create_coordinate_frame()])
-
-        test.run(partial_pc_aux, complete_pc_aux, poses, mean, var)  # just pass partial points
+        o3d.visualization.draw_geometries([partial_pc_aux, complete_pc_aux])  # TODO REMOVE
+        test.run(partial_pc_aux, complete_pc_aux, poses)  # just pass partial points
 
         # If a key is pressed, break
         if msvcrt.kbhit():
@@ -124,3 +124,4 @@ if __name__ == "__main__":
         # pc.translate(mean)
         # o3d.visualization.draw_geometries([pc, o3d.geometry.TriangleMesh.create_coordinate_frame(), partial_pcd])
         # TODO REMOVE DEBUG
+

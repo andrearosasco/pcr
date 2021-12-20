@@ -63,6 +63,10 @@ class PoseVisualizer:
         # Set up visualizer
         self.vis = Visualizer()
         self.vis.create_window(width=1920, height=1080)
+        ctr = self.vis.get_view_control()
+        parameters = o3d.io.read_pinhole_camera_parameters("ehi.json")
+        ctr.convert_from_pinhole_camera_parameters(parameters)
+
         # Complete point cloud
         self.complete_pc = PointCloud()
         self.complete_pc.points = Vector3dVector(np.random.randn(2348, 3))
@@ -72,37 +76,13 @@ class PoseVisualizer:
         self.partial_pc.points = Vector3dVector(np.random.randn(2024, 3))
         self.vis.add_geometry(self.partial_pc)
         # Camera TODO ROTATE
-        self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3))
+        # self.vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
         # Coords
-        self.coords_mesh = None
+        self.coords_mesh = [o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3) for _ in range(2)]
+        for mesh in self.coords_mesh:
+            self.vis.add_geometry(mesh)
         self.line = LineSet()
         self.vis.add_geometry(self.line)
-
-    def reset_coords(self):
-        """
-        It resets coordinate frames, useful between one example and the next one, or to easily move camera
-        Returns: None
-        """
-        # TODO POSITION CAMERA
-        dist = 1.5
-        camera_parameters = PinholeCameraParameters()
-        camera_parameters.extrinsic = np.array([[1, 0, 0, 0],
-                                                [0, 1, 0, 0],
-                                                [0, 0, 1, 1000],
-                                                [0, 0, 0, 1]])
-        camera_parameters.intrinsic.set_intrinsics(width=1920, height=1080, fx=1000, fy=1000, cx=959.5, cy=539.5)
-        control = self.vis.get_view_control()
-        control.convert_from_pinhole_camera_parameters(camera_parameters, True)
-
-        if self.coords_mesh is not None:
-            for coord in self.coords_mesh:
-                self.vis.remove_geometry(coord)
-
-        self.coords_mesh = []
-        for _ in range(2):
-            coord = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-            self.coords_mesh.append(coord)
-            self.vis.add_geometry(coord)
 
     def run(self, partial_pc_aux, complete_pc_aux, poses, mean=(0, 0, 0), var=1, depth_pc=None):
         """
@@ -127,8 +107,8 @@ class PoseVisualizer:
         for c, normal, coord_mesh in zip(best_centers, best_normals, self.coords_mesh):
             coord_mesh_ = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
 
-            c[2] = -c[2]  # Invert depth
-            normal[2] = -normal[2]  # Invert normal in depth dimension
+            # c[2] = -c[2]  # Invert depth
+            normal[0] = -normal[0]  # Invert normal in depth dimension
             c = c * var * 2  # De-normalize center
 
             coord_mesh_.translate(c, relative=False)
@@ -136,27 +116,20 @@ class PoseVisualizer:
             coord_mesh_.rotate(R, center=c)
             coord_mesh_.translate(mean, relative=True)  # Translate coord as the point cloud
 
-            # TODO Rotate also y axis
+            ##########################
+            # MAKE y AXE POINTS DOWN #
+            ##########################
             new_vert_rot = (R @ np.array([0, 1, 0])) / np.linalg.norm(R @ np.array([0, 1, 0]))
 
             # Project y axis over the plane
-            projected = project_onto_plane(np.array([0, -1, 0]), normal)
+            projected = project_onto_plane(np.array([0, 1, 0]), normal)  # TODO CAREFull TO POINT DOWN
             projected = np.array(projected) / np.linalg.norm(projected)
-
-            # # TODO REMOVE DEBUG
-            # points = np.zeros((2, 3))
-            # points[0] = projected
-            # points[1] = c
-            # self.line.points = Vector3dVector(points)
-            # self.line.lines = Vector2iVector(np.array([[0, 1]]))
-            # self.vis.update_geometry(self.line)
-            # # TODO REMOVE DEBUG
 
             # Compute angle between projected y axe and actual y axe
             n = np.cross(new_vert_rot, projected) / np.linalg.norm(np.cross(new_vert_rot, projected))
             sign = 1 if abs(np.sum(n - normal)) < 1e-8 else -1
             rotation_radians = angle_between(new_vert_rot, projected) * sign
-            print(np.degrees(rotation_radians))
+            # print(np.degrees(rotation_radians))
 
             # Rotate mesh
             C = np.array([[0, -normal[2], normal[1]],
@@ -167,10 +140,10 @@ class PoseVisualizer:
             coord_mesh_.rotate(R, center=c)
             coord_mesh_.translate(mean, relative=True)  # Translate coord as the point cloud
 
-            rotation_radians = angle_between(R @ new_vert_rot, projected) * sign
-            print(np.degrees(rotation_radians))
-            # TODO Rotate also y axis
+            # rotation_radians = angle_between(R @ new_vert_rot, projected) * sign
+            # print(np.degrees(rotation_radians))
 
+            # Update mesh
             coord_mesh.triangles = coord_mesh_.triangles
             coord_mesh.vertices = coord_mesh_.vertices
 
@@ -186,7 +159,7 @@ class PoseVisualizer:
         self.partial_pc.colors = Vector3dVector(colors)
         # Invert x axis to plot like the pc obtained from depth
         inverted = np.array(self.partial_pc.points)
-        inverted[..., 2] = -inverted[..., 2]
+        # inverted[..., 2] = -inverted[..., 2]
         self.partial_pc.points = Vector3dVector(inverted)
         # De-normalize
         self.partial_pc.scale(var * 2, center=[0, 0, 0])
@@ -200,7 +173,7 @@ class PoseVisualizer:
         self.complete_pc.colors = Vector3dVector(colors)
         # Invert x axis to plot like the pc obtained from the depth
         inverted = np.array(self.complete_pc.points)
-        inverted[..., 2] = -inverted[..., 2]
+        # inverted[..., 2] = -inverted[..., 2]
         self.complete_pc.points = Vector3dVector(inverted)
         # De-normalize
         self.complete_pc.scale(var * 2, center=[0, 0, 0])
