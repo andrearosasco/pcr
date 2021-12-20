@@ -14,7 +14,7 @@ from torchmetrics import AverageMeter, F1, Recall, Precision, Accuracy
 import open3d as o3d
 
 from configs import DataConfig, ModelConfig, TrainConfig
-from datasets.ShapeNetPOVRemoval import BoxNet
+from datasets.BoxNetPOVRemoval import BoxNet
 from utils.misc import check_mesh_contains, create_3d_grid, chamfer
 from .Transformer import PCTransformer
 

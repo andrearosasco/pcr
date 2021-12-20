@@ -146,12 +146,12 @@ synthetic_dataset/dataset
 synthetic_dataset/ycb
 ours/wandb
 wandb
-data
 ShapeNetCore.v1.zip
 ours/datasets/labelled_rgb_meshes
 /pointr/
 ours/checkpoint
 point-cloud-to-gif
-/data/
 /ours/lightning_logs/
 checkpoint
+/data/ShapeNetCore.v2/data/
+/depth_test.png

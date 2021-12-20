@@ -1,8 +1,9 @@
 import os
-import time
+
 from torch.optim import SGD
 
 from utils.lightning import SplitProgressBar
+from utils.metrics import chamfer_distance
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
@@ -13,21 +14,21 @@ except ImportError:
     from open3d.cpu.pybind.visualization import draw_geometries
     from open3d.cpu.pybind.geometry import PointCloud
 
-from configs.server_config import DataConfig, ModelConfig, TrainConfig
+from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
 
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 from pytorch_lightning.callbacks import GPUStatsMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from torchmetrics import Accuracy, Precision, Recall, F1, AverageMeter
+from torchmetrics import Accuracy, Precision, Recall, F1, MeanMetric
 import random
 import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from datasets.ShapeNetPOVRemoval import BoxNet
+from datasets.BoxNetPOVDepth import BoxNet as Dataset
 from models.HyperNetwork import BackBone, ImplicitFunction
 import torch
 import copy
-from utils.misc import create_3d_grid, check_mesh_contains, create_cube
+from utils.misc import create_3d_grid, check_mesh_contains, create_cube, sample_point_cloud
 import open3d as o3d
 import wandb
 import pytorch_lightning as pl
@@ -70,8 +71,8 @@ class HyperNetwork(pl.LightningModule):
         self.precision_ = Precision()
         self.recall = Recall()
         self.f1 = F1()
-        self.avg_loss = AverageMeter()
-        self.avg_chamfer = AverageMeter()
+        self.avg_loss = MeanMetric()
+        self.avg_chamfer = MeanMetric()
 
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
@@ -84,9 +85,9 @@ class HyperNetwork(pl.LightningModule):
     #             nn.init.constant_(m.bias, 0)
 
     def prepare_data(self):
-        self.training_set = BoxNet(DataConfig, DataConfig.train_samples)
+        self.training_set = Dataset(DataConfig, DataConfig.train_samples)
 
-        self.valid_set = BoxNet(DataConfig, DataConfig.val_samples)
+        self.valid_set = Dataset(DataConfig, DataConfig.val_samples)
 
     def train_dataloader(self):
         dl = DataLoader(self.training_set,
@@ -104,7 +105,7 @@ class HyperNetwork(pl.LightningModule):
         return DataLoader(
             self.valid_set,
             shuffle=False,
-            batch_size=TrainConfig.test_mb_size,
+            batch_size=EvalConfig.mb_size,
             drop_last=False,
             num_workers=TrainConfig.num_workers,
             pin_memory=True)
@@ -112,20 +113,15 @@ class HyperNetwork(pl.LightningModule):
     def forward(self, partial, object_id=None, step=0.04):
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
 
-        # start = time.time()
         fast_weights, _ = self.backbone(partial)
-        # print("Create Fast Weights: {}".format(time.time() - start))
-
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
-        return prediction, fast_weights, samples
+        return prediction
 
     def configure_optimizers(self):
         optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)
         return optimizer
 
-    def on_train_start(self) -> None:
-        wandb.watch(self, log='all', log_freq=TrainConfig.log_metrics_every)
 
     def on_train_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
@@ -142,18 +138,18 @@ class HyperNetwork(pl.LightningModule):
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
 
         ### Adaptation
-        adaptation_steps = 10
-
-        fast_weights = [[t.clone().detach().requires_grad_(True) for t in l] for l in fast_weights]
-        optim = SGD(sum(fast_weights, []), lr=0.5, momentum=0.9)
-        adpt_samples = partial # should add more negarive samples (e.g. all the one on the same lines of positive samples)
-        for _ in range(adaptation_steps):
-            out = self.sdf(adpt_samples, fast_weights)
-            loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,), device=TrainConfig.device))
-
-            optim.zero_grad()
-            loss.backward(inputs=sum(fast_weights, []))
-            optim.step()
+        # adaptation_steps = 10
+        #
+        # fast_weights = [[t.clone().detach().requires_grad_(True) for t in l] for l in fast_weights]
+        # optim = SGD(sum(fast_weights, []), lr=0.5, momentum=0.9)
+        # adpt_samples = partial # should add more negarive samples (e.g. all the one on the same lines of positive samples)
+        # for _ in range(adaptation_steps):
+        #     out = self.sdf(adpt_samples, fast_weights)
+        #     loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,), device=TrainConfig.device))
+        #
+        #     optim.zero_grad()
+        #     loss.backward(inputs=sum(fast_weights, []))
+        #     optim.step()
 
         ### Adaptation
 
@@ -185,27 +181,47 @@ class HyperNetwork(pl.LightningModule):
         for vert, tri in zip(verts, tris):
             meshes_list.append(o3d.geometry.TriangleMesh(Vector3dVector(vert.cpu()), Vector3iVector(tri.cpu())))
 
-        self.grid = create_3d_grid(batch_size=label.shape[0],
-                                   step=TrainConfig.grid_res_step).to(TrainConfig.device)
+        # The sampling on the grid simulate the evaluation process
+        # But if we use tolerance=0.0 we are not able to extract a ground truth
+        samples1 = create_3d_grid(batch_size=label.shape[0],
+                                   step=EvalConfig.grid_res_step).to(TrainConfig.device)
+        occupancy1 = check_mesh_contains(meshes_list, samples1.cpu().numpy(), tolerance=EvalConfig.tolerance).tolist()  # TODO PARALLELIZE IT
+        occupancy1 = torch.FloatTensor(occupancy1).to(TrainConfig.device)
 
-        occupancy = check_mesh_contains(meshes_list, self.grid, max_dist=0.01)  # TODO PARALLELIZE IT
-        # Andrea said         occupancy = check_mesh_contains(meshes_list, self.grid.cpu().tolist(), tolerance=0.01).tolist()
-        occupancy = torch.FloatTensor(occupancy).to(TrainConfig.device)
+        # The sampling with "sample_point_cloud" simulate the sampling used during training
+        # This is useful as we always get ground truths sampling on the meshes but it doesn't reflect
+        #   how the algorithm will work after deployment
+        samples2, occupancy2 = [], []
+        for mesh in meshes_list:
+            s, o = sample_point_cloud(mesh, n_points=DataConfig.implicit_input_dimension, dist=EvalConfig.dist,
+                                                    noise_rate=EvalConfig.noise_rate, tolerance=EvalConfig.tolerance)
+            samples2.append(s), occupancy2.append(o)
+        samples2 = torch.tensor(np.array(samples2)).float().to(TrainConfig.device)
+        occupancy2 = torch.tensor(occupancy2, dtype=torch.float).unsqueeze(-1).to(TrainConfig.device)
 
         one_hot = None
         if ModelConfig.use_object_id:
             one_hot = torch.zeros((label.shape[0], DataConfig.n_classes), dtype=torch.float).to(label.device)
             one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
+        ############# INFERENCE #############
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
-        out = self.sdf(self.grid, fast_weights)
+        out1 = torch.sigmoid(self.sdf(samples1, fast_weights))
+        out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
 
-        return {'out': torch.sigmoid(out).detach().cpu(), 'target': occupancy.detach().cpu(),
+        return {'out1': out1.detach().cpu(), 'out2': out2.detach().cpu(), 'target1': occupancy1.detach().cpu(),
+                'target2': occupancy2.detach().cpu(), 'samples1': samples1, 'samples2': samples2,
                 'mesh': meshes_list, 'partial': partial.detach().cpu(), 'label': label.detach().cpu()}
 
     def validation_step_end(self, output):
-        pred, trgt, mesh = output['out'], output['target'].int(), output['mesh']
-        self.accuracy(pred, trgt), self.precision_(pred, trgt), self.avg_chamfer(chamfer(self.grid, pred, mesh))
+        mesh = output['mesh']
+        if EvalConfig.grid_eval:
+            pred, trgt = output['out1'], output['target1'].int()
+        else:
+            pred, trgt = output['out2'], output['target2'].int()
+
+        self.accuracy(pred, trgt), self.precision_(pred, trgt)
+        self.avg_chamfer(chamfer(output['samples1'], output['out1'], mesh))
         self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
 
         return output
@@ -222,23 +238,28 @@ class HyperNetwork(pl.LightningModule):
 
         for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
-            out, trgt, mesh = batch['out'][-1], batch['target'][-1], batch['mesh'][-1]
+            mesh = batch['mesh'][-1]
+            if EvalConfig.grid_eval:
+                out, trgt, samples = batch['out1'][-1], batch['target1'][-1], batch['samples1'][-1]
+            else:
+                out, trgt, samples = batch['out2'][-1], batch['target2'][-1], batch['samples2'][-1]
+
             pred = out > 0.5
 
             # all positive predictions with labels for true positive and false positives
-            colors = torch.zeros_like(self.grid[0], device='cpu')
+            colors = torch.zeros_like(samples, device='cpu')
             colors[trgt.bool().squeeze()] = torch.tensor([0, 255., 0])
             colors[~ trgt.bool().squeeze()] = torch.tensor([255., 0, 0])
 
-            precision_pc = torch.cat((self.grid[0].cpu(), colors), dim=-1).detach().cpu().numpy()
+            precision_pc = torch.cat((samples.cpu(), colors), dim=-1).detach().cpu().numpy()
             precision_pc = precision_pc[pred.squeeze()]
 
             # all true points with labels for true positive and false negatives
-            colors = torch.zeros_like(self.grid[0], device='cpu')
+            colors = torch.zeros_like(samples, device='cpu')
             colors[pred.squeeze()] = torch.tensor([0, 255., 0])
             colors[~ pred.squeeze()] = torch.tensor([255., 0, 0])
 
-            recall_pc = torch.cat((self.grid[0].cpu(), colors), dim=-1).detach().cpu().numpy()
+            recall_pc = torch.cat((samples.cpu(), colors), dim=-1).detach().cpu().numpy()
             recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
             # complete = o3d.io.read_triangle_mesh(mesh[-1], False)
@@ -297,14 +318,15 @@ def print_memory():
 
 
 def chamfer(samples, predictions, meshes):
+    distances = []
     for mesh, pred in zip(meshes, predictions):
-        query = samples[0, (pred > 0.5).squeeze()]
-        scene = o3d.t.geometry.RaycastingScene()
-        mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
-        _ = scene.add_triangles(mesh)
-        query_points = o3d.core.Tensor(query.cpu().numpy(), dtype=o3d.core.Dtype.Float32)
-        signed_distance = scene.compute_distance(query_points)
-        return np.mean(signed_distance.numpy())
+        pc1 = samples[0, (pred > 0.5).squeeze()].unsqueeze(0)
+        if pc1.shape[1] == 0:
+            pc1 = torch.zeros(pc1.shape[0], 1, pc1.shape[2], device=TrainConfig.device)
+        pc2 = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0).to(TrainConfig.device)
+
+        distances.append(chamfer_distance(pc1, pc2))
+    return torch.stack(distances).mean().detach().cpu()
 
 
 if __name__ == '__main__':
@@ -319,9 +341,10 @@ if __name__ == '__main__':
               'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
                        not k.startswith("__")}}
 
-    wandb.login(key="f5f77cf17fad38aaa2db860576eee24bde163b7a")
+    wandb.login()
     wandb.init(project="train_box")
     wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
+    wandb.watch(model, log='all', log_freq=TrainConfig.log_metrics_every)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -337,7 +360,8 @@ if __name__ == '__main__':
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
-                         callbacks=[GPUStatsMonitor(),
+                         num_sanity_val_steps=2,
+                         callbacks=[
                                     SplitProgressBar(),
                                     checkpoint_callback],
                          )

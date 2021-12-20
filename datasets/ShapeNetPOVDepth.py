@@ -1,10 +1,15 @@
 from pathlib import Path
 
+import cv2
 import numpy as np
 import torch
 import torch.utils.data as data
 import open3d as o3d
 from open3d import visualization
+from open3d.cpu.pybind.visualization import draw_geometries
+
+from configs import DataConfig
+
 try:
     from open3d.cuda.pybind import camera
 except ImportError:
@@ -12,9 +17,8 @@ except ImportError:
 from torch.utils.data import DataLoader
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
-from utils.misc import sample_point_cloud
+from utils.misc import sample_point_cloud, create_cube
 from scipy.spatial.transform import Rotation as R
-
 
 class ShapeNet(data.Dataset):
     def __init__(self, config, mode="easy/train", overfit_mode=False):
@@ -27,22 +31,23 @@ class ShapeNet(data.Dataset):
 
         # Implicit function input
         self.noise_rate = config.noise_rate
-        self.percentage_sampled = config.percentage_sampled
+        self.dist = config.dist
+        self.tolerance = config.tolerance
         self.implicit_input_dimension = config.implicit_input_dimension
 
-        with (self.data_root / f'{self.mode}.txt').open('r') as file:
+        with (self.data_root / 'splits' / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
 
         self.samples = lines
         self.n_samples = len(lines)
 
-        with (self.data_root / 'classes.txt').open('r') as file:
+        with (self.data_root / 'splits' / mode.split('/')[0] / 'classes.txt').open('r') as file:
             self.labels_map = {l.split()[1]: l.split()[0] for l in file.readlines()}
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
 
         # Find the mesh
-        dir_path = self.data_root / self.samples[idx].strip()
+        dir_path = self.data_root / 'data' / self.samples[idx].strip()
         label = int(self.labels_map[dir_path.parent.name])
         complete_path = dir_path / 'models/model_normalized.obj'
 
@@ -88,8 +93,17 @@ class ShapeNet(data.Dataset):
 
         # Generate the partial point cloud
         depth_image = o3d.geometry.Image(depth)
+
+        cv2.imshow('', np.array(depth))
+        cv2.waitKey(0)
+
         partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image, camera_parameters.intrinsic)
         partial_pcd = np.array(partial_pcd.points)
+
+        pc = PointCloud()
+        pc.points = Vector3dVector(partial_pcd)
+        draw_geometries([pc, mesh, o3d.geometry.TriangleMesh.create_coordinate_frame(origin=[0, 0, dist], size=1),
+                         o3d.geometry.TriangleMesh.create_coordinate_frame(origin=[0, 0, 0], size=1)])
 
         # Normalize the partial point cloud (all we could do at test time)
         mean = np.mean(np.array(partial_pcd), axis=0)
@@ -104,23 +118,30 @@ class ShapeNet(data.Dataset):
         mesh.scale(1 / (var * 2), center=[0, 0, 0])
 
         # # TODO Tests START
-        # complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
-        # aux = np.array(complete_pcd.points)
-        # t1 = np.all(np.min(aux, axis=0) > -0.5)
-        # t2 = np.all(np.min(aux, axis=0) < 0.5)
-        #
-        # if not (t1 and t2):
-        #     print(complete_path)
-        #     draw_geometries([complete_pcd, create_cube()])
-        #
+        complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
+        complete_pcd.paint_uniform_color([1, 0, 0])
+        aux = np.array(complete_pcd.points)
+        t1 = np.all(np.min(aux, axis=0) > -0.5)
+        t2 = np.all(np.max(aux, axis=0) < 0.5)
+
+        pc = PointCloud()
+        pc.points = Vector3dVector(partial_pcd)
+        pc.paint_uniform_color([0, 0, 1])
+
+        if not (t1 and t2):
+            print(complete_path)
+            draw_geometries([complete_pcd, pc ,create_cube()])
+        else:
+            draw_geometries([complete_pcd, pc, create_cube()])
+
         # # TODO Tests END
 
         # Sample labeled point on the mesh
         samples, occupancy = sample_point_cloud(mesh,
-                                                self.noise_rate,
-                                                self.percentage_sampled,
-                                                total=self.implicit_input_dimension,
-                                                mode="unsigned")
+                                                n_points=self.implicit_input_dimension,
+                                                dist=self.dist,
+                                                noise_rate=self.noise_rate,
+                                                tolerance=self.tolerance)
 
         # Next lines bring the shape a face of the cube so that there's more space to
         # complete it. But is it okay for the input to be shifted toward -0.5 and not
@@ -150,35 +171,42 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from ours.configs.local_config import DataConfig
     from tqdm import tqdm
-    from open3d.cpu.pybind.geometry import PointCloud
-    from open3d.cpu.pybind.utility import Vector3dVector
 
-    a = DataConfig()
-    a.dataset_path = Path("..", "data", "ShapeNetCore.v2")
-    iterator = ShapeNet(a)
+    try:
+        from open3d.cuda.pybind.geometry import PointCloud
+        from open3d.cuda.pybind.utility import Vector3dVector
+    except ImportError:
+        from open3d.cpu.pybind.geometry import PointCloud
+        from open3d.cpu.pybind.utility import Vector3dVector
+
+    iterator = ShapeNet(DataConfig)
     loader = DataLoader(iterator, num_workers=0, shuffle=False, batch_size=1)
     for elem in tqdm(loader):
-        lab, part, comp, x, y = elem
+        lab, part, mesh, x, y = elem
 
-        # pc = PointCloud()
-        # pc.points = Vector3dVector(comp)
-        # o3d.visualization.draw_geometries([pc], window_name="Complete")
-        # #
-        # pc = PointCloud()
-        # pc.points = Vector3dVector(part)
-        # o3d.visualization.draw_geometries([pc], window_name="Partial")
+        for p, r, m, v in zip(*mesh):
+            mesh = o3d.io.read_triangle_mesh(p)
+            mesh.rotate(r.cpu().numpy())
+            mesh.translate(-m.cpu().numpy())
+            mesh.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
+            pc = mesh.sample_points_uniformly(2048)
 
-        # pc = PointCloud()
-        # pc.points = Vector3dVector(x)
-        # colors = []
-        # for i in y:
-        #     if i == 0.:
-        #         colors.append(np.array([1, 0, 0]))
-        #     if i == 1.:
-        #         colors.append(np.array([0, 1, 0]))
-        # colors = np.stack(colors)
-        # colors = Vector3dVector(colors)
-        # pc.colors = colors
-        # o3d.visualization.draw_geometries([pc])
+            o3d.visualization.draw_geometries([pc], window_name="Complete")
+            #
+            pc = PointCloud()
+            pc.points = Vector3dVector(part.squeeze().numpy())
+            o3d.visualization.draw_geometries([pc], window_name="Partial")
+
+            pc = PointCloud()
+            pc.points = Vector3dVector(x.squeeze().numpy())
+            colors = []
+            for i in y.squeeze(0):
+                if i == 0.:
+                    colors.append(np.array([1, 0, 0]))
+                if i == 1.:
+                    colors.append(np.array([0, 1, 0]))
+            colors = np.stack(colors)
+            colors = Vector3dVector(colors)
+            pc.colors = colors
+            o3d.visualization.draw_geometries([pc])
