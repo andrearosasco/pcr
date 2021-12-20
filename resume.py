@@ -17,7 +17,7 @@ if __name__ == '__main__':
               'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
                         not k.startswith("__")},
               'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-                        not k.startswith("__")}}
+                       not k.startswith("__")}}
 
     run = wandb.init(project='train_box', id=id, resume='must')
 
@@ -32,17 +32,16 @@ if __name__ == '__main__':
         mode='max',
         auto_insert_metric_name=False)
 
-
     trainer = Trainer(max_epochs=TrainConfig.n_epoch,
-                         precision=32,
-                         gpus=1,
-                         log_every_n_steps=TrainConfig.log_metrics_every,
-                         logger=[wandb_logger],
-                         gradient_clip_val=TrainConfig.clip_value,
-                         gradient_clip_algorithm='value',
-                         callbacks=[GPUStatsMonitor(),
-                                    SplitProgressBar(),
-                                    checkpoint_callback],
-                         )
+                      precision=32,
+                      gpus=1,
+                      log_every_n_steps=TrainConfig.log_metrics_every,
+                      logger=[wandb_logger],
+                      gradient_clip_val=TrainConfig.clip_value,
+                      gradient_clip_algorithm='value',
+                      callbacks=[GPUStatsMonitor(),
+                                 SplitProgressBar(),
+                                 checkpoint_callback],
+                      )
 
     trainer.fit(model, ckpt_path=f'artifacts/{ckpt}/model.ckpt')

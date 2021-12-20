@@ -1,12 +1,8 @@
-import math
 import time
 import random
 import open3d as o3d
 import numpy as np
-from open3d.cpu.pybind.camera import PinholeCameraParameters
-
-from frompartialtopose import FromPartialToPose
-from scipy.spatial.transform import Rotation
+from utils.misc import project_onto_plane, angle_between
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
@@ -17,37 +13,6 @@ except ImportError:
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector, Vector2iVector
     from open3d.cpu.pybind.visualization import draw_geometries, Visualizer
     from open3d.cpu.pybind.geometry import PointCloud, LineSet
-
-
-def dot_product(x, y):
-    return sum([x[i] * y[i] for i in range(len(x))])
-
-
-def norm(x):
-    return math.sqrt(dot_product(x, x))
-
-
-def normalize(x):
-    return [x[i] / norm(x) for i in range(len(x))]
-
-
-def project_onto_plane(x, n):
-    d = dot_product(x, n) / norm(n)
-    p = [d * normalize(n)[i] for i in range(len(n))]
-    return [x[i] - p[i] for i in range(len(x))]
-
-
-def unit_vector(vector):
-    """ Returns the unit vector of the vector.  """
-    return vector / np.linalg.norm(vector)
-
-
-def angle_between(v1, v2):
-    """ Returns the angle in radians between vectors 'v1' and 'v2'::
-    """
-    v1_u = unit_vector(v1)
-    v2_u = unit_vector(v2)
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
 class PoseVisualizer:
@@ -63,9 +28,10 @@ class PoseVisualizer:
         # Set up visualizer
         self.vis = Visualizer()
         self.vis.create_window(width=1920, height=1080)
-        ctr = self.vis.get_view_control()
-        parameters = o3d.io.read_pinhole_camera_parameters("ehi.json")
-        ctr.convert_from_pinhole_camera_parameters(parameters)
+        # TODO UPDATE OPEN3D
+        # ctr = self.vis.get_view_control()
+        # parameters = o3d.io.read_pinhole_camera_parameters("assets/gazebo_camera_reference.json")
+        # ctr.convert_from_pinhole_camera_parameters(parameters, True)
 
         # Complete point cloud
         self.complete_pc = PointCloud()

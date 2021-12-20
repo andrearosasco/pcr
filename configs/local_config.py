@@ -23,6 +23,7 @@ class DataConfig:
     tolerance = 0.0
     train_samples = 10000
     val_samples = 100
+    n_classes = 1
 
 
 @dataclass

@@ -1,43 +1,19 @@
-# import multiprocessing
 import torch
 from sklearn.neighbors import KDTree
 import numpy as np
-
-def chamfer_distance(points1, points2, use_kdtree=True, give_id=False):
-    ''' Returns the chamfer distance for the sets of points.
-
-    Args:
-        points1 (numpy array): first point set
-        points2 (numpy array): second point set
-        use_kdtree (bool): whether to use a kdtree
-        give_id (bool): whether to return the IDs of nearest points
-    '''
-    if use_kdtree:
-        return chamfer_distance_kdtree(points1, points2, give_id=give_id)
-    else:
-        return chamfer_distance_naive(points1, points2)
+from configs import TrainConfig
 
 
-def chamfer_distance_naive(points1, points2):
-    ''' Naive implementation of the Chamfer distance.
+def chamfer_distance(samples, predictions, meshes):  # TODO IT DOES NOT WORK WELL
+    distances = []
+    for mesh, pred in zip(meshes, predictions):
+        pc1 = samples[0, (pred > 0.5).squeeze()].unsqueeze(0)
+        if pc1.shape[1] == 0:
+            pc1 = torch.zeros(pc1.shape[0], 1, pc1.shape[2], device=TrainConfig.device)
+        pc2 = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0).to(TrainConfig.device)
 
-    Args:
-        points1 (numpy array): first point set
-        points2 (numpy array): second point set
-    '''
-    assert(points1.size() == points2.size())
-    batch_size, T, _ = points1.size()
-
-    points1 = points1.view(batch_size, T, 1, 3)
-    points2 = points2.view(batch_size, 1, T, 3)
-
-    distances = (points1 - points2).pow(2).sum(-1)
-
-    chamfer1 = distances.min(dim=1)[0].mean(dim=1)
-    chamfer2 = distances.min(dim=2)[0].mean(dim=1)
-
-    chamfer = chamfer1 + chamfer2
-    return chamfer
+        distances.append(chamfer_distance_kdtree(pc1, pc2))
+    return torch.stack(distances).mean().detach().cpu()
 
 
 def chamfer_distance_kdtree(points1, points2, give_id=False):

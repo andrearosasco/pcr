@@ -3,8 +3,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.utils.data as data
-from matplotlib import pyplot as plt
-from matplotlib.pyplot import hist
 from numpy.random import uniform
 from open3d import visualization
 
@@ -20,10 +18,7 @@ except ImportError:
     from open3d.cpu.pybind.visualization import draw_geometries
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation as R
-import random
-import time
-
-from utils.misc import sample_point_cloud, sample_point_cloud2, create_cube
+from utils.misc import sample_point_cloud
 
 
 
