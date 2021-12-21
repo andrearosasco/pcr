@@ -1,14 +1,14 @@
 import msvcrt
-import time
 import open3d as o3d
 import numpy as np
 import torch
-from frompartialtopose import FromPartialToPose
+from utils.pose_generator import PoseGenerator
 from main import HyperNetwork
-from utils.icub_gazebo_interface import iCubGazebo
+from utils.input import iCubGazebo
 import cv2
-from utils.pose_visualizer import PoseVisualizer
+from utils.output import PoseVisualizer
 from configs.server_config import ModelConfig
+from utils.pointcloud_reconstructor import PointCloudReconstructor
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
@@ -31,10 +31,12 @@ if __name__ == "__main__":
     res = 0.01
 
     # Pose generator
-    model = HyperNetwork.load_from_checkpoint('./checkpoint/from_depth', config=ModelConfig)
+    model = HyperNetwork.load_from_checkpoint('../checkpoint/from_depth', config=ModelConfig)
     model = model.to(device)
     model.eval()
-    generator = FromPartialToPose(model, res, device)
+
+    reconstructor = PointCloudReconstructor(model, res, device)
+    generator = PoseGenerator()
 
     while True:
         # GET DEPTH IMAGE FROM GAZEBO AND CONVERT IT INTO A POINT CLOUD ################################################
@@ -63,8 +65,6 @@ if __name__ == "__main__":
 
         # Sample Point Cloud
         part = torch.FloatTensor(np.array(partial_pcd.points))  # Must be 1, 2024, 3
-        # indices = fp_sampling(part.unsqueeze(0), 2024)  # TODO THIS IS SLOW
-        # part = part[indices.long().squeeze()]  # TODO THIS IS SLOW
         part = part[torch.randperm(part.size()[0])]  # TODO THIS IS FAST BUT LESS ACCURATE (?)
         part = part[:2024]  # TODO THIS IS FAST BUT LESS ACCURATE (?)
 
@@ -75,20 +75,14 @@ if __name__ == "__main__":
         var = np.sqrt(np.max(np.sum(part ** 2, axis=1)))
         part = part / (var * 2)
 
-        # part[..., -1] = -part[..., -1]  # TODO VERIFY (IS IT NORMAL THAT I NEED TO INVERT THIS?)
         partial_points = part
 
         # Reconstruct point cloud and find pose ########################################################################
         # Reconstruct partial point cloud
-        complete_pc_aux, fast_weights = generator.reconstruct_point_cloud(partial_points)
-
-        # TODO CHECK FIX:
-        # partial_points[..., -1] = -partial_points[..., -1]
-        # complete_pc_aux[..., -1] = -complete_pc_aux[..., -1]
-        # TODO END
+        complete_pc_aux, fast_weights = reconstructor.reconstruct_point_cloud(partial_points)
 
         # Refine point cloud
-        complete_pc_aux = generator.refine_point_cloud(complete_pc_aux, fast_weights, n=5, show_loss=False)
+        complete_pc_aux = reconstructor.refine_point_cloud(complete_pc_aux, fast_weights, n=5, show_loss=False)
 
         # start = time.time()  # TODO REMOVE BOTTLENECK
         pc = PointCloud()
@@ -97,14 +91,12 @@ if __name__ == "__main__":
         # print("TIME: {}".format(time.time() - start))
 
         # Find poses
-        poses = generator.find_poses(complete_pc_aux, mult_res=1.5, n_points=1000, iterations=1000, debug=False)
+        poses = generator.find_poses(complete_pc_aux, dist=res*1.5, n_points=1000, iterations=1000, debug=False,
+                                     mean=mean, var=var)
 
         # Visualize results
         partial_pc_aux = PointCloud()
         partial_pc_aux.points = Vector3dVector(partial_points)  # NOTE: not a bottleneck because only 2048 points
-
-        # o3d.visualization.draw_geometries([partial_pc_aux, complete_pc_aux,
-        #                                    o3d.geometry.TriangleMesh.create_coordinate_frame()])
 
         test.run(partial_pc_aux, complete_pc_aux, poses, mean, var)  # just pass partial points
 
@@ -112,15 +104,3 @@ if __name__ == "__main__":
         if msvcrt.kbhit():
             print(msvcrt.getch())
             break
-
-        # TODO REMOVE DEBUG
-        # pc = PointCloud()
-        # pc.points = Vector3dVector(part)
-        # o3d.visualization.draw_geometries([pc, o3d.geometry.TriangleMesh.create_coordinate_frame()])
-        # inverted = np.array(pc.points)
-        # inverted[..., 2] = -inverted[..., 2]
-        # pc.points = Vector3dVector(inverted)
-        # pc.scale(var*2, center=[0, 0, 0])
-        # pc.translate(mean)
-        # o3d.visualization.draw_geometries([pc, o3d.geometry.TriangleMesh.create_coordinate_frame(), partial_pcd])
-        # TODO REMOVE DEBUG

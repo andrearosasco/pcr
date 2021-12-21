@@ -43,10 +43,14 @@ class PoseGenerator:
         return R
 
     @staticmethod
-    def find_poses(pc, dist, n_points=10, iterations=100, debug=False):
+    def find_poses(pc, dist, n_points=10, iterations=100, debug=False, mean=np.array([0, 0, 0]), var=0.5, up=True):
         """
         Get a complete point cloud and return the a point cloud with good grasping spot
         Args:
+            up:
+            var:
+            mean:
+            debug: if to draw each iteration with open3d.draw_geometries
             dist: distance of points in RANSAC algorithm to belong to plane
             iterations: number of iterations to do in segment plane
             n_points: number of points to use in each iteration of segment plane
@@ -86,18 +90,22 @@ class PoseGenerator:
 
         # TODO GENERATE POSE
         # Move center
-        mean = np.array([0, 0, 0])
-        var = 1
         c1 = c1 * var * 2  # De-normalize center
         c2 = c2 * var * 2  # De-normalize center
-        c2[0] = -c2[0]  # Invert depth
-        c2[0] = -c2[0]  # Invert depth
         c1 = c1 + mean
-        c1 = c1 + mean
+        c2 = c2 + mean
+
+        # Force normals to point in the same direction
+        if not np.allclose(n1, n2, rtol=1.e-1, atol=1.e-1):
+            if n1[2] > n2[2]:
+                n1 = -n1
+            else:
+                n2 = -n2
 
         # Create rotation matrix
         rotations = []
         for n in [n1, n2]:
+            n = -n
             R_z = PoseGenerator.create_rotation_matrix(np.array([0, 0, 1]), n)
 
             ##########################
@@ -106,12 +114,13 @@ class PoseGenerator:
             y = (R_z @ np.array([0, 1, 0])) / np.linalg.norm(R_z @ np.array([0, 1, 0]))
 
             # Project y axis over the plane
-            projected = project_onto_plane(np.array([0, 1, 0]), n)  # TODO CAREFull TO POINT DOWN
+            trg = np.array([0, 1, 0]) if up else np.array([0, -1, 0])
+            projected = project_onto_plane(trg, n)  # TODO CAREFull TO POINT DOWN
             projected = np.array(projected) / np.linalg.norm(projected)
 
             # Compute angle between projected y axe and actual y axe
             ort = np.cross(y, projected) / np.linalg.norm(np.cross(y, projected))
-            sign = 1 if abs(np.sum(ort - n)) < 1e-8 else -1
+            sign = 1 if np.allclose(ort, n) else -1
             rotation_radians = angle_between(y, projected) * sign
             # print(np.degrees(rotation_radians))  # TODO remove debug
 

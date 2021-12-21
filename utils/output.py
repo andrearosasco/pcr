@@ -51,7 +51,7 @@ class PoseVisualizer:
         self.line = LineSet()
         self.vis.add_geometry(self.line)
 
-    def run(self, partial_pc_aux, complete_pc_aux, poses, mean=(0, 0, 0), var=1, depth_pc=None):
+    def run(self, partial_pc_aux, complete_pc_aux, poses, mean=(0, 0, 0), var=0.5, depth_pc=None):
         """
         It visualizes the results, given all the elements
         Args:
