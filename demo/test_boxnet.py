@@ -1,7 +1,7 @@
 import time
 import numpy as np
 from configs.server_config import DataConfig
-from datasets.BoxNetPOVDepth import BoxNet
+from datasets.BoxNetPOVRemoval import BoxNet
 from utils.pose_generator import PoseGenerator
 from utils.pointcloud_reconstructor import PointCloudReconstructor
 from main import HyperNetwork
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
     model = model.to(device)
     model.eval()
-    generator = PoseGenerator(model, res, device)  # TODO REMOVE MODEL
+    generator = PoseGenerator()
     reconstructor = PointCloudReconstructor(model, res, device)
 
     for s in valid_set:
@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
             # Find poses
             start = time.time()  # 1.5 100 1000
-            poses = generator.find_poses(complete_pc_aux, mult_res=1.5, n_points=1000, iterations=1000, debug=False)
+            poses = generator.find_poses(complete_pc_aux, dist=res*1.5, n_points=1000, iterations=1000, debug=False)
             if print_time:
                 print("Find poses: {}".format(time.time() - start))
 

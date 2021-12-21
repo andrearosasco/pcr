@@ -21,7 +21,6 @@ from scipy.spatial.transform import Rotation as R
 from utils.misc import sample_point_cloud
 
 
-
 class BoxNet(data.Dataset):
     def __init__(self, config, n_samples):
         #  Backbone Input
