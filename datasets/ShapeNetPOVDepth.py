@@ -1,5 +1,4 @@
 from pathlib import Path
-
 import cv2
 import numpy as np
 import torch
@@ -17,8 +16,9 @@ except ImportError:
 from torch.utils.data import DataLoader
 
 o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
-from utils.misc import sample_point_cloud, create_cube
+from utils.misc import sample_point_cloud
 from scipy.spatial.transform import Rotation as R
+
 
 class ShapeNet(data.Dataset):
     def __init__(self, config, mode="easy/train", overfit_mode=False):
@@ -130,9 +130,9 @@ class ShapeNet(data.Dataset):
 
         if not (t1 and t2):
             print(complete_path)
-            draw_geometries([complete_pcd, pc ,create_cube()])
+            draw_geometries([complete_pcd, pc])
         else:
-            draw_geometries([complete_pcd, pc, create_cube()])
+            draw_geometries([complete_pcd, pc])
 
         # # TODO Tests END
 

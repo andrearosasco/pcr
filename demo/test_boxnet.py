@@ -1,10 +1,11 @@
 import time
 import numpy as np
 from configs.server_config import DataConfig
-from datasets.ShapeNetPOVRemoval import BoxNet
-from frompartialtopose import FromPartialToPose
+from datasets.BoxNetPOVDepth import BoxNet
+from utils.pose_generator import PoseGenerator
+from utils.pointcloud_reconstructor import PointCloudReconstructor
 from main import HyperNetwork
-from utils.pose_visualizer import PoseVisualizer
+from utils.output import PoseVisualizer
 import msvcrt
 from configs.server_config import ModelConfig
 import tqdm
@@ -38,11 +39,12 @@ if __name__ == "__main__":
     model = HyperNetwork.load_from_checkpoint('./checkpoint/best', config=ModelConfig)
     model = model.to(device)
     model.eval()
-    generator = FromPartialToPose(model, res, device)
+    generator = PoseGenerator(model, res, device)  # TODO REMOVE MODEL
+    reconstructor = PointCloudReconstructor(model, res, device)
 
     for s in valid_set:
 
-        test.reset_coords()
+        # test.reset_coords()
 
         # for _ in tqdm.tqdm(range(100)):
         while True:
@@ -52,13 +54,13 @@ if __name__ == "__main__":
 
             # Reconstruct partial point cloud
             start = time.time()
-            complete_pc_aux, fast_weights = generator.reconstruct_point_cloud(partial_points)
+            complete_pc_aux, fast_weights = reconstructor.reconstruct_point_cloud(partial_points)
             if print_time:
                 print("Reconstruct: {}".format(time.time() - start))
 
             # Refine point cloud
             start = time.time()
-            complete_pc_aux = generator.refine_point_cloud(complete_pc_aux, fast_weights, n=5, show_loss=False)
+            complete_pc_aux = reconstructor.refine_point_cloud(complete_pc_aux, fast_weights, n=5, show_loss=False)
             if print_time:
                 print("Refine: {}".format(time.time() - start))
 
