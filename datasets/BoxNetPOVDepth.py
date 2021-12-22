@@ -5,6 +5,8 @@ import torch
 import torch.utils.data as data
 from numpy.random import uniform
 from open3d import visualization
+from torch.nn.utils.rnn import pack_padded_sequence, pack_sequence
+from torch.utils.data.dataloader import default_collate
 
 try:
     from open3d.cuda.pybind import camera
@@ -183,7 +185,10 @@ class BoxNet(data.Dataset):
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float)
 
-        return 0, partial_pcd, [np.array(mesh.vertices), np.array(mesh.triangles)], samples, occupancy
+        return 0, partial_pcd, \
+               [torch.tensor(np.vstack(mesh.vertices)),
+                torch.tensor(np.array(mesh.triangles))], \
+               samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)

@@ -2,9 +2,9 @@ import subprocess
 from datetime import datetime
 from dataclasses import dataclass
 import torch
+import train
 
 device = 'cuda'
-
 
 @dataclass
 class DataConfig:
@@ -83,3 +83,7 @@ class EvalConfig:
     noise_rate = DataConfig.noise_rate
 
     mb_size = 32
+
+
+if __name__ == '__main__':
+    train.run()

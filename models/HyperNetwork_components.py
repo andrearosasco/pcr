@@ -1,13 +1,13 @@
 import random
 import numpy as np
 import torch
+from models.Transformer import PCTransformer
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
 except ImportError as e:
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
 from torch import nn
 from configs import TrainConfig
-from .Transformer import PCTransformer
 
 
 class MLP(nn.Module):

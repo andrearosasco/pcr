@@ -18,12 +18,9 @@ from pytorch_lightning.loggers import WandbLogger
 import wandb
 import pytorch_lightning as pl
 
-
 # ================================================================
 
-
-if __name__ == '__main__':
-    print(TrainConfig.num_workers)
+def run():
 
     model = HyperNetwork(ModelConfig)
 
@@ -53,7 +50,7 @@ if __name__ == '__main__':
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
-                         num_sanity_val_steps=2,
+                         num_sanity_val_steps=0,
                          callbacks=[
                                     SplitProgressBar(),
                                     checkpoint_callback],

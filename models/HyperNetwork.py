@@ -2,6 +2,8 @@ from abc import ABC
 import numpy as np
 import torch
 import wandb
+from torch.nn.utils.rnn import pad_packed_sequence
+from torch.optim import SGD
 
 from models.HyperNetwork_components import BackBone, ImplicitFunction
 from utils.metrics import chamfer_distance
@@ -18,7 +20,7 @@ import open3d as o3d
 import pytorch_lightning as pl
 from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
 from torchmetrics import MeanMetric
-from utils.misc import check_mesh_contains, create_3d_grid, sample_point_cloud
+from utils.misc import check_mesh_contains, create_3d_grid, sample_point_cloud, collate
 from datasets.BoxNetPOVDepth import BoxNet as Dataset
 from utils.seed import get_generator, seed_worker
 
@@ -66,6 +68,7 @@ class HyperNetwork(pl.LightningModule, ABC):
                         drop_last=True,
                         num_workers=TrainConfig.num_workers,
                         pin_memory=True,
+                        collate_fn=collate,
                         worker_init_fn=seed_worker,
                         generator=get_generator())
 
@@ -78,7 +81,8 @@ class HyperNetwork(pl.LightningModule, ABC):
             batch_size=EvalConfig.mb_size,
             drop_last=False,
             num_workers=TrainConfig.num_workers,
-            pin_memory=True)
+            pin_memory=True,
+            collate_fn=collate)
 
     def forward(self, partial, object_id=None, step=0.04):
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
@@ -109,8 +113,10 @@ class HyperNetwork(pl.LightningModule, ABC):
         ### Adaptation
         # adaptation_steps = 10
         #
-        # fast_weights = [[t.clone().detach().requires_grad_(True) for t in l] for l in fast_weights]
-        # optim = SGD(sum(fast_weights, []), lr=0.5, momentum=0.9)
+        # #TODO if I'm detaching it from the computational graph, how is the gradient gonna flow back
+        # sdf = ImplicitFunction(ModelConfig, fast_weights)
+        #
+        # optim = SGD(sum(fast_weights, []), lr=0.01, momentum=0.9)
         # adpt_samples = partial # should add more negarive samples (e.g. all the one on the same lines of positive samples)
         # for _ in range(adaptation_steps):
         #     out = self.sdf(adpt_samples, fast_weights)
@@ -147,8 +153,11 @@ class HyperNetwork(pl.LightningModule, ABC):
 
         verts, tris = meshes
         meshes_list = []
-        for vert, tri in zip(verts, tris):
-            meshes_list.append(o3d.geometry.TriangleMesh(Vector3dVector(vert.cpu()), Vector3iVector(tri.cpu())))
+        verts, verts_lengths = pad_packed_sequence(verts, batch_first=True, padding_value=0.)
+        tris, tris_lenths = pad_packed_sequence(tris, batch_first=True, padding_value=0.)
+        for vert, l1, tri, l2 in zip(verts, verts_lengths, tris, tris_lenths):
+            meshes_list.append(o3d.geometry.TriangleMesh(Vector3dVector(vert[:l1].cpu()),
+                                                         Vector3iVector(tri[:l2].cpu())))
 
         # The sampling on the grid simulate the evaluation process
         # But if we use tolerance=0.0 we are not able to extract a ground truth

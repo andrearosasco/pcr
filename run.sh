@@ -9,4 +9,4 @@
 #SBATCH --partition=main
 
 cd ~/projects/pcr
-singularity run --nv ~/.images/pcr_final.sif main.py > train-output.txt 2>&1
+singularity run --nv ~/.images/pcr_final.sif configs/server_config.py > train-output.txt 2>&1

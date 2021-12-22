@@ -98,14 +98,18 @@ class ShapeNet(data.Dataset):
             ids = perm[:self.partial_points]
             partial_pcd = partial_pcd[ids]
         else:
-            print(f'Warning: had to pad the partial pcd {complete_path} - points {partial_pcd.shape[0]} added {self.partial_points - partial_pcd.shape[0]}')
+            print(
+                f'Warning: had to pad the partial pcd {complete_path} - points {partial_pcd.shape[0]} added {self.partial_points - partial_pcd.shape[0]}')
             diff = self.partial_points - partial_pcd.shape[0]
             partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
 
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
 
-        return label, partial_pcd, [str(complete_path), rotation, mean, var], samples, occupancy
+        return 0, partial_pcd, \
+               [torch.tensor(np.vstack(mesh.vertices)),
+                torch.tensor(np.array(mesh.triangles))], \
+               samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)

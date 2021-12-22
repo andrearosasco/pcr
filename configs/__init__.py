@@ -1,8 +1,10 @@
-import platform
+import importlib
+import sys
+from pathlib import Path
 
+module = importlib.import_module(Path(sys.argv[0]).stem)
 
-print(platform.platform())
-if "Windows" in platform.platform():
-    from .local_config import DataConfig, ModelConfig, TrainConfig, EvalConfig
-else:
-    from .server_config import DataConfig, ModelConfig, TrainConfig, EvalConfig
+DataConfig = module.DataConfig
+ModelConfig = module.ModelConfig
+TrainConfig = module.TrainConfig
+EvalConfig = module.EvalConfig

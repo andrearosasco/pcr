@@ -3,6 +3,8 @@ import math
 import numpy as np
 import torch
 from torch import cdist
+from torch.nn.utils.rnn import pack_sequence
+from torch.utils.data.dataloader import default_collate
 
 try:
     from open3d.cuda.pybind.geometry import PointCloud
@@ -16,6 +18,25 @@ from cmath import sin
 from math import cos, sin
 import open3d as o3d
 
+
+def collate(batch):
+    """'
+     Since every mesh in a batch is represented by two variable-length tensors
+     we need to packed them so that the dataloader is able to return them.
+     We can convert it to a padded tensor using pad_packed_sequence(x, batch_first=True, padding_value=0.)
+    """
+    transposed = zip(*batch)
+    out = []
+    for samples in transposed:
+        if isinstance(samples[0], list):
+            meshes = []
+            for seq in list(zip(*samples)):
+                packed = pack_sequence(list(seq), enforce_sorted=False)
+                meshes.append(packed)
+            out.append(meshes)
+        else:
+            out.append(default_collate(samples))
+    return out
 
 def create_sphere():
     sphere = []

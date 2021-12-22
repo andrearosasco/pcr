@@ -2,13 +2,9 @@ import subprocess
 from datetime import datetime
 from dataclasses import dataclass
 import torch
-import os
-
-
-# PARAMETERS ###########################################################################################################
+import train
 
 device = "cuda"
-
 
 @dataclass
 class DataConfig:
@@ -68,7 +64,7 @@ class TrainConfig:
     clip_value = 5  # 0.5?
     log_metrics_every = 10
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
-    num_workers = 4  # TODO PUT 4
+    num_workers = 4
     git = ""  # git_hash()
     optimizer = torch.optim.AdamW
     loss = torch.nn.BCEWithLogitsLoss
@@ -88,3 +84,7 @@ class EvalConfig:
     noise_rate = DataConfig.noise_rate
 
     mb_size = 32
+
+
+if __name__ == '__main__':
+    train.run()

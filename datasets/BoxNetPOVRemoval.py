@@ -12,6 +12,7 @@ import time
 
 from utils.misc import sample_point_cloud, sample_point_cloud2
 
+
 #  0.1 0.4
 def gen_box(min_side=0.1, max_side=0.4):
     sizes = []
@@ -64,7 +65,7 @@ class BoxNet(data.Dataset):
         var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
 
         partial_pcd = partial_pcd / (var * 2)
-        # partial_pcd = partial_pcd / 2080  # TODO AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAA
+        # partial_pcd = partial_pcd / 2080
 
         # Move the mesh so that it matches the partial point cloud position
         # (the [0, 0, 1] is to compensate for the fact that the partial pc is in the camera frame)
@@ -80,20 +81,18 @@ class BoxNet(data.Dataset):
 
         partial_pcd = torch.FloatTensor(partial_pcd)
 
-        # Set partial_pcd such that it has the same size of the others
         if partial_pcd.shape[0] > self.partial_points:
             perm = torch.randperm(partial_pcd.size(0))
             ids = perm[:self.partial_points]
             partial_pcd = partial_pcd[ids]
-        else:
-            print(f'Warning: had to pad the partial pcd - points {partial_pcd.shape[0]} added {self.partial_points - partial_pcd.shape[0]}')
-            diff = self.partial_points - partial_pcd.shape[0]
-            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3))) # TODO nooooooo
 
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float)
 
-        return 0, partial_pcd, [np.array(mesh.vertices), np.array(mesh.triangles)], samples, occupancy
+        return 0, partial_pcd, \
+               [torch.tensor(np.vstack(mesh.vertices)),
+                torch.tensor(np.array(mesh.triangles))], \
+               samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)

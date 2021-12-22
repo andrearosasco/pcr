@@ -6,7 +6,8 @@ from configs import TrainConfig, ModelConfig, DataConfig
 from models.HyperNetwork import HyperNetwork
 from utils.lightning import SplitProgressBar
 
-if __name__ == '__main__':
+
+def run():
     id = 'a9p3pryz'
     ckpt = 'model-a9p3pryz:v39'
 
