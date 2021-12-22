@@ -4,7 +4,7 @@ from open3d.cpu.pybind.utility import Vector3dVector, Vector2iVector
 from open3d.cpu.pybind.visualization import Visualizer
 import open3d as o3d
 
-from utils.pose_visualizer import project_onto_plane, angle_between
+from utils.misc import project_onto_plane, angle_between
 
 
 def create_vector(v, c):

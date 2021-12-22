@@ -90,7 +90,7 @@ class HyperNetwork(pl.LightningModule, ABC):
         fast_weights, _ = self.backbone(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
-        return prediction
+        return prediction, fast_weights, samples
 
     def configure_optimizers(self):
         optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)

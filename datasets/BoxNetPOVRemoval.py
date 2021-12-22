@@ -8,9 +8,8 @@ import torch.utils.data as data
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation as R
 import random
-import time
+from utils.misc import sample_point_cloud
 
-from utils.misc import sample_point_cloud, sample_point_cloud2
 
 
 #  0.1 0.4
