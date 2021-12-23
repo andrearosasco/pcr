@@ -4,10 +4,10 @@ import numpy as np
 from configs import TrainConfig
 
 
-def chamfer_distance(samples, predictions, meshes):  # TODO IT DOES NOT WORK WELL
+def chamfer_distance(predictions, meshes):  # TODO IT DOES NOT WORK WELL
     distances = []
     for mesh, pred in zip(meshes, predictions):
-        pc1 = samples[0, (pred > 0.5).squeeze()].unsqueeze(0)
+        pc1 = pred.unsqueeze(0)
         if pc1.shape[1] == 0:
             pc1 = torch.zeros(pc1.shape[0], 1, pc1.shape[2], device=TrainConfig.device)
         pc2 = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0).to(TrainConfig.device)

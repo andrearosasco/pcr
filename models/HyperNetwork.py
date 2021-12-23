@@ -4,7 +4,8 @@ import torch
 import wandb
 from torch.nn.utils.rnn import pad_packed_sequence
 from torch.optim import SGD
-
+import os
+from configs import DataConfig, TrainConfig, EvalConfig, ModelConfig
 from models.HyperNetwork_components import BackBone, ImplicitFunction
 from utils.metrics import chamfer_distance
 
@@ -18,7 +19,6 @@ import torch.nn.functional as F
 from torchmetrics import F1, Recall, Precision, Accuracy
 import open3d as o3d
 import pytorch_lightning as pl
-from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
 from torchmetrics import MeanMetric
 from utils.misc import check_mesh_contains, create_3d_grid, sample_point_cloud, collate
 from datasets.BoxNetPOVDepth import BoxNet as Dataset

@@ -2,7 +2,6 @@ import subprocess
 from datetime import datetime
 from dataclasses import dataclass
 import torch
-import train
 
 device = 'cuda'
 
@@ -86,4 +85,5 @@ class EvalConfig:
 
 
 if __name__ == '__main__':
+    import train, eval, resume
     train.run()

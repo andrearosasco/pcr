@@ -7,8 +7,7 @@ from torch.nn import BCEWithLogitsLoss
 from torch.optim import SGD
 
 from configs.server_config import ModelConfig, TrainConfig
-from frompartialtopose import FromPartialToPose
-from main import HyperNetwork
+from models import HyperNetwork
 from pathlib import Path
 
 import numpy as np
@@ -123,7 +122,7 @@ loss_function = BCEWithLogitsLoss(reduction='mean')
 optim = SGD([refined_pred], lr=0.01, momentum=0.9)
 
 c1, c2, c3 = 1, 0, 0  # 1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
-for step in range(10):
+for step in range(0):
     results = model.sdf(refined_pred, fast_weights)
 
     gt = torch.ones_like(results[..., 0], dtype=torch.float32)
@@ -156,47 +155,11 @@ selected = refined_pred.detach().cpu().squeeze().numpy()
 pred_pc = PointCloud()
 pred_pc.points = Vector3dVector(selected)
 pred_pc.paint_uniform_color([0, 0, 1])
-# pred_pc.points = Vector3dVector(np.array(pred_pc.points) * (var * 2))
-# t = np.eye(4)
-# t[0:3, 3] = mean
-# pred_pc.transform(t)
-
-# part_pc = PointCloud()
-# part_pc.points = Vector3dVector(full_pc)
-# part_pc.paint_uniform_color([0, 1, 0])
 
 part_pc = PointCloud()
 part_pc.points = Vector3dVector(normalized_pc)
 part_pc.paint_uniform_color([0, 1, 0])
-#
-# res = FromPartialToPose(None, grid_res=0.01).find_poses(pred_pc)
-# c1, n1, c2, n2 = res
-# r1, r2 = FromPartialToPose.get_rotations(res)
 
-# for c, r, n, h in zip([c1, c2], [r1, r2], [n1, n2], hands):
-#     c[2] = -c[2]  # Invert depth
-#     n[2] = -n[2]  # Invert normal in depth dimension
-#     c = c * 1 * 2  # De-normalize center
-#
-#     aux_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-#     aux_mesh.translate(c, relative=False)
-#     o3d.visualization.draw_geometries([pred_pc, part_pc, line_set, aux_mesh])
-#     R = FromPartialToPose.create_rotation_matrix(np.array([0, 0, 1]), n)
-#     aux_mesh.rotate(R, center=c)
-#     aux_mesh.translate([0, 0, 0], relative=True)
-#
-#     aux_mesh.translate(c, relative=False)
-#     aux_mesh.rotate(r, center=c)
-#     aux_mesh.translate(mean, relative=True)  # Translate coord as the point cloud
-#
-#     h.triangles = aux_mesh.triangles
-#     h.vertices = aux_mesh.vertices
-
-# print(f'read time - {read_time / 100}')
-# print(f'seg time - {seg_time / 100}')
-# print(f'inf time - {inf_time / 100}')
-# print(f'ref time - {ref_time / 100}')
-# print(f'tot time - {(read_time + seg_time + inf_time + ref_time) / 100}')
 
 o3d.io.write_point_cloud("reconstruction.ply", pred_pc)
 o3d.io.write_point_cloud("partial.ply", part_pc)

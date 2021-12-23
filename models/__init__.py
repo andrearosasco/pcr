@@ -1,1 +1,1 @@
-from models import HyperNetwork
+from models.HyperNetwork import HyperNetwork

@@ -2,7 +2,13 @@ import importlib
 import sys
 from pathlib import Path
 
-module = importlib.import_module(Path(sys.argv[0]).stem)
+# If you want to execute an arbitrary file and import
+# a specific configuration, add these lines before the
+# configuration import:
+# import sys
+# sys.argv[0] = '[name of the config file without extension]'
+
+module = importlib.import_module(f'configs.{Path(sys.argv[0]).stem}')
 
 DataConfig = module.DataConfig
 ModelConfig = module.ModelConfig
