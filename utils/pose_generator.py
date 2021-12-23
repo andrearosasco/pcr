@@ -96,11 +96,15 @@ class PoseGenerator:
         c2 = c2 + mean
 
         # Force normals to point in the same direction
-        if not np.allclose(n1, n2, rtol=1.e-1, atol=1.e-1):
-            if n1[2] > n2[2]:
-                n1 = -n1
-            else:
-                n2 = -n2
+        if n1[0] < 0:
+            n1 = -n1
+        if n2[0] < 0:
+            n2 = -n2
+        # if not np.allclose(n1, n2, rtol=1.e-1, atol=1.e-1):
+        #     if n1[0] < n2[0]:
+        #         n1 = -n1
+        #     else:
+        #         n2 = -n2
 
         # Create rotation matrix
         rotations = []

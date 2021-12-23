@@ -35,7 +35,7 @@ hands = [o3d.geometry.TriangleMesh.create_coordinate_frame() for _ in range(2)]
 #####################################################
 ############# Model and Camera Setup ################
 #####################################################
-model = HyperNetwork.load_from_checkpoint('checkpoint/depth_best', config=ModelConfig)
+model = HyperNetwork.load_from_checkpoint('../checkpoint/from_depth', config=ModelConfig)
 model = model.to('cuda')
 model.eval()
 
@@ -105,7 +105,7 @@ if __name__ == '__main__':
         ##################################################
 
         start_time_vis = time.time()
-        print(chamfer_distance(selected, meshes_list))
+        # print(chamfer_distance(selected, meshes_list))
 
         # pred_pc = PointCloud()
         # pred_pc.points = Vector3dVector(selected.detach().cpu().squeeze().numpy())
@@ -120,9 +120,9 @@ if __name__ == '__main__':
         elapsed_time_vis = (time.time() - start_time_vis)
 
         print(elapsed_time_data)
-        print(elapsed_time_prep)
-        print(elapsed_time_inf)
-        print(elapsed_time_vis)
+        # print(elapsed_time_prep)
+        # print(elapsed_time_inf)
+        # print(elapsed_time_vis)
 
         # o3d.visualization.draw_geometries([pred_pc, part_pc, line_set, full_pc])
 

@@ -38,6 +38,7 @@ def collate(batch):
             out.append(default_collate(samples))
     return out
 
+
 def create_sphere():
     sphere = []
     for _ in range(10000):
