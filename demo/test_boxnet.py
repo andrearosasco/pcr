@@ -1,10 +1,12 @@
 import time
 import numpy as np
-from configs.server_config import DataConfig
+import sys
+sys.argv[0] = 'server_config'
+from configs import DataConfig
 from datasets.BoxNetPOVRemoval import BoxNet  # NOTE it cant work with BoxNetPOVDepth
 from utils.pose_generator import PoseGenerator
 from utils.pointcloud_reconstructor import PointCloudReconstructor
-from main import HyperNetwork
+from models import HyperNetwork
 from utils.output import PoseVisualizer
 import msvcrt
 from configs.server_config import ModelConfig
@@ -36,7 +38,7 @@ if __name__ == "__main__":
     res = 0.01
 
     # Pose generator
-    model = HyperNetwork.load_from_checkpoint('../checkpoint/best', config=ModelConfig)
+    model = HyperNetwork.load_from_checkpoint('checkpoint/best', config=ModelConfig)
     model = model.to(device)
     model.eval()
     generator = PoseGenerator()
