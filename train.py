@@ -11,7 +11,8 @@ except ImportError:
     from open3d.cpu.pybind.visualization import draw_geometries
     from open3d.cpu.pybind.geometry import PointCloud
 
-from configs import DataConfig, ModelConfig, TrainConfig
+from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
+
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev  # TODO TEST TO MOVE AFTER LIGHTNING
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
@@ -34,7 +35,7 @@ def run():
     wandb.login()
     wandb.init(project="train_box")
     wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
-    wandb.watch(model, log='all', log_freq=TrainConfig.log_metrics_every)
+    wandb.watch(model, log='all', log_freq=EvalConfig.log_metrics_every)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -46,11 +47,11 @@ def run():
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
                          gpus=1,
-                         log_every_n_steps=TrainConfig.log_metrics_every,
+                         log_every_n_steps=EvalConfig.log_metrics_every,
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
-                         num_sanity_val_steps=0,
+                         num_sanity_val_steps=2,
                          callbacks=[
                                     SplitProgressBar(),
                                     checkpoint_callback],

@@ -1,13 +1,17 @@
 import torch
 from sklearn.neighbors import KDTree
 import numpy as np
+from torch.nn.utils.rnn import pad_packed_sequence
+
 from configs import TrainConfig
 
 
-def chamfer_distance(predictions, meshes):  # TODO IT DOES NOT WORK WELL
+def chamfer_distance(samples, out, meshes):  # TODO IT DOES NOT WORK WELL
     distances = []
-    for mesh, pred in zip(meshes, predictions):
-        pc1 = pred.unsqueeze(0)
+
+
+    for samples, out, mesh in zip(samples, out, meshes):
+        pc1 = samples[out[..., 0] >= 0.5].unsqueeze(0)
         if pc1.shape[1] == 0:
             pc1 = torch.zeros(pc1.shape[0], 1, pc1.shape[2], device=TrainConfig.device)
         pc2 = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0).to(TrainConfig.device)

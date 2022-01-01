@@ -2,7 +2,8 @@ from abc import ABC
 import numpy as np
 import torch
 import wandb
-from torch.nn.utils.rnn import pad_packed_sequence
+from torch import autocast
+from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence, pad_sequence
 from torch.optim import SGD
 import os
 from configs import DataConfig, TrainConfig, EvalConfig, ModelConfig
@@ -108,6 +109,7 @@ class HyperNetwork(pl.LightningModule, ABC):
             one_hot = torch.zeros((label.shape[0], DataConfig.n_classes), dtype=torch.float).to(label.device)
             one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
+        # with autocast(TrainConfig.device):
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
 
         ### Adaptation
@@ -149,6 +151,8 @@ class HyperNetwork(pl.LightningModule, ABC):
         self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset()
 
     def validation_step(self, batch, batch_idx):
+        # if self.current_epoch % 10 == 0:
+
         label, partial, meshes, _, _ = batch
 
         verts, tris = meshes
@@ -184,6 +188,7 @@ class HyperNetwork(pl.LightningModule, ABC):
             one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
         ############# INFERENCE #############
+        # with autocast(TrainConfig.device):
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
         out1 = torch.sigmoid(self.sdf(samples1, fast_weights))
         out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
@@ -193,6 +198,7 @@ class HyperNetwork(pl.LightningModule, ABC):
                 'mesh': meshes_list, 'partial': partial.detach().cpu(), 'label': label.detach().cpu()}
 
     def validation_step_end(self, output):
+        # if self.current_epoch % 10 == 0:
         mesh = output['mesh']
         if EvalConfig.grid_eval:
             pred, trgt = output['out1'], output['target1'].int()
@@ -206,6 +212,7 @@ class HyperNetwork(pl.LightningModule, ABC):
         return output
 
     def validation_epoch_end(self, output):
+        # if self.current_epoch % 10 == 0:
         self.log('valid/accuracy', self.accuracy.compute())
         self.log('valid/precision', self.precision_.compute())
         self.log('valid/recall', self.recall.compute())
@@ -263,4 +270,3 @@ class HyperNetwork(pl.LightningModule, ABC):
                 {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
             self.trainer.logger.experiment[0].log(
                 {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
-            pass

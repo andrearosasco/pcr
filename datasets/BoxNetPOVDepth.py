@@ -1,3 +1,5 @@
+import time
+
 import open3d as o3d
 from pathlib import Path
 import numpy as np
@@ -7,6 +9,8 @@ from numpy.random import uniform
 from open3d import visualization
 from torch.nn.utils.rnn import pack_padded_sequence, pack_sequence
 from torch.utils.data.dataloader import default_collate
+
+from configs import TrainConfig, DataConfig
 
 try:
     from open3d.cuda.pybind import camera
@@ -58,6 +62,7 @@ class BoxNet(data.Dataset):
                 rotation = R.from_euler('xz', [uniform(**self.mesh_angle), uniform(**self.mesh_angle)]).as_matrix()
             elif .51 <= p < 1:
                 rotation = R.random().as_matrix()
+            # rotation = R.from_euler('z', uniform(**self.mesh_angle)).as_matrix()
 
             mesh = mesh.rotate(rotation)
 
@@ -194,36 +199,11 @@ class BoxNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from configs.local_config import DataConfig
-    from tqdm import tqdm
-    # from open3d.cpu.pybind.geometry import PointCloud
-    # from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
-
-    a = DataConfig()
-    a.dataset_path = Path("..", "data", "ShapeNetCore.v2")
-    iterator = BoxNet(a, 10000)
+    iterator = BoxNet(DataConfig, 10000)
     loader = DataLoader(iterator, num_workers=0, shuffle=False, batch_size=1)
-    for elem in tqdm(loader):
-        lab, part, mesh_vars, x, y = elem
 
-        # verts, tris = mesh_vars
-        #
-        # mesh = o3d.geometry.TriangleMesh(Vector3dVector(verts[0].cpu()), Vector3iVector(tris[0].cpu()))
-        # # o3d.visualization.draw_geometries([mesh], window_name="Complete")
-        #
-        # pc_part = PointCloud()
-        # pc_part.points = Vector3dVector(part[0])  # remove batch dimension
-        # # o3d.visualization.draw_geometries([pc_part], window_name="Partial")
-        #
-        # pc = PointCloud()
-        # pc.points = Vector3dVector(x[0])  # remove batch dimension
-        # colors = []
-        # for i in y[0]:  # remove batch dimension
-        #     if i == 0.:
-        #         colors.append(np.array([1, 0, 0]))
-        #     if i == 1.:
-        #         colors.append(np.array([0, 1, 0]))
-        # colors = np.stack(colors)
-        # colors = Vector3dVector(colors)
-        # pc.colors = colors
-        # # o3d.visualization.draw_geometries([pc, mesh])
+    s = time.time()
+    for elem in loader:
+        _, part, meshes, _, _ = elem
+        s = time.time()
+

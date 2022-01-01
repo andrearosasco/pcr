@@ -7,10 +7,11 @@ from pathlib import Path
 # configuration import:
 # import sys
 # sys.argv[0] = '[name of the config file without extension]'
+from configs.server_config import DataConfig, ModelConfig, TrainConfig, EvalConfig
 
-module = importlib.import_module(f'configs.{Path(sys.argv[0]).stem}')
-
-DataConfig = module.DataConfig
-ModelConfig = module.ModelConfig
-TrainConfig = module.TrainConfig
-EvalConfig = module.EvalConfig
+# module = importlib.import_module(f'configs.{Path(sys.argv[0]).stem}')
+#
+# DataConfig = module.DataConfig
+# ModelConfig = module.ModelConfig
+# TrainConfig = module.TrainConfig
+# EvalConfig = module.EvalConfig
