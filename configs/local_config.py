@@ -56,23 +56,18 @@ class TrainConfig:
     device = device
     visible_dev = '0'
     lr = 1e-4
-    wd = 0.0005
+    wd = 0.0
     mb_size = 8
-    test_mb_size = 8
+
     n_epoch = 20
-    clip_value = 5  # 0.5?
+    clip_value = 1  # 0.5?
     log_metrics_every = 10
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
-    num_workers = 4
+    num_workers = 0
     git = ""  # git_hash()
-    optimizer = torch.optim.AdamW
+    optimizer = torch.optim.Adam
     loss = torch.nn.BCEWithLogitsLoss
     loss_reduction = "mean"  # "none"
-    load_ckpt = None
-    save_ckpt = f"{datetime.now().strftime('%d-%m-%y_%H-%M')}"
-    overfit_mode = False
-    # overfit_sample = "../data/ShapeNetCore.v2/02747177/1ce689a5c781af1bcf01bc59d215f0/models/model_normalized.obj"
-    # overfit_sample = "../pcr/data/ShapeNetCore.v2/02691156/1a9b552befd6306cc8f2d5fe7449af61/models/model_normalized.obj"
 
 @dataclass
 class EvalConfig:
@@ -81,8 +76,9 @@ class EvalConfig:
     tolerance = DataConfig.tolerance
     dist = DataConfig.dist
     noise_rate = DataConfig.noise_rate
+    log_metrics_every = 100
 
-    mb_size = 32
+    mb_size = 8
 
 
 if __name__ == '__main__':

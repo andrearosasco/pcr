@@ -69,9 +69,8 @@ class HyperNetwork(pl.LightningModule, ABC):
                         drop_last=True,
                         num_workers=TrainConfig.num_workers,
                         pin_memory=True,
-                        collate_fn=collate,
                         worker_init_fn=seed_worker,
-                        generator=get_generator())
+                        generator=get_generator(TrainConfig.seed))
 
         return dl
 
@@ -82,8 +81,7 @@ class HyperNetwork(pl.LightningModule, ABC):
             batch_size=EvalConfig.mb_size,
             drop_last=False,
             num_workers=TrainConfig.num_workers,
-            pin_memory=True,
-            collate_fn=collate)
+            pin_memory=True)
 
     def forward(self, partial, object_id=None, step=0.04):
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
@@ -157,18 +155,14 @@ class HyperNetwork(pl.LightningModule, ABC):
 
         verts, tris = meshes
         meshes_list = []
-        verts, verts_lengths = pad_packed_sequence(verts, batch_first=True, padding_value=0.)
-        tris, tris_lenths = pad_packed_sequence(tris, batch_first=True, padding_value=0.)
-        for vert, l1, tri, l2 in zip(verts, verts_lengths, tris, tris_lenths):
-            meshes_list.append(o3d.geometry.TriangleMesh(Vector3dVector(vert[:l1].cpu()),
-                                                         Vector3iVector(tri[:l2].cpu())))
+        for vert, tri in zip(verts, tris):
+            meshes_list.append(o3d.geometry.TriangleMesh(Vector3dVector(vert.cpu()), Vector3iVector(tri.cpu())))
 
         # The sampling on the grid simulate the evaluation process
         # But if we use tolerance=0.0 we are not able to extract a ground truth
         samples1 = create_3d_grid(batch_size=label.shape[0],
-                                  step=EvalConfig.grid_res_step).to(TrainConfig.device)
-        occupancy1 = check_mesh_contains(meshes_list, samples1.cpu().numpy(),
-                                         tolerance=EvalConfig.tolerance).tolist()  # TODO PARALLELIZE IT
+                                   step=EvalConfig.grid_res_step).to(TrainConfig.device)
+        occupancy1 = check_mesh_contains(meshes_list, samples1.cpu().numpy(), tolerance=EvalConfig.tolerance).tolist()  # TODO PARALLELIZE IT
         occupancy1 = torch.FloatTensor(occupancy1).to(TrainConfig.device)
 
         # The sampling with "sample_point_cloud" simulate the sampling used during training
@@ -177,7 +171,7 @@ class HyperNetwork(pl.LightningModule, ABC):
         samples2, occupancy2 = [], []
         for mesh in meshes_list:
             s, o = sample_point_cloud(mesh, n_points=DataConfig.implicit_input_dimension, dist=EvalConfig.dist,
-                                      noise_rate=EvalConfig.noise_rate, tolerance=EvalConfig.tolerance)
+                                                    noise_rate=EvalConfig.noise_rate, tolerance=EvalConfig.tolerance)
             samples2.append(s), occupancy2.append(o)
         samples2 = torch.tensor(np.array(samples2)).float().to(TrainConfig.device)
         occupancy2 = torch.tensor(occupancy2, dtype=torch.float).unsqueeze(-1).to(TrainConfig.device)

@@ -32,10 +32,6 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
-generator = torch.Generator()
-generator.manual_seed(TrainConfig.seed)
-
-
 class BackBone(nn.Module):
     def __init__(self, config):
         super().__init__()

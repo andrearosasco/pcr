@@ -1,6 +1,7 @@
 import os
 from models.HyperNetwork import HyperNetwork
 from utils.lightning import SplitProgressBar
+from utils.seed import enable_reproducibility
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
@@ -22,6 +23,7 @@ import pytorch_lightning as pl
 # ================================================================
 
 def run():
+    enable_reproducibility(TrainConfig.seed)
 
     model = HyperNetwork(ModelConfig)
 

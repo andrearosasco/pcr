@@ -75,13 +75,13 @@ class TrainConfig:
 @dataclass
 class EvalConfig:
     grid_eval = False
-    grid_res_step = 0.01
+    grid_res_step = 0.04
     tolerance = DataConfig.tolerance
     dist = DataConfig.dist
     noise_rate = DataConfig.noise_rate
 
     log_metrics_every = 100
-    mb_size = 8
+    mb_size = 32
 
 
 if __name__ == '__main__':

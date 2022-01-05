@@ -189,10 +189,7 @@ class BoxNet(data.Dataset):
         samples = torch.tensor(samples).float()
         occupancy = torch.tensor(occupancy, dtype=torch.float)
 
-        return 0, partial_pcd, \
-               [torch.tensor(np.vstack(mesh.vertices)),
-                torch.tensor(np.array(mesh.triangles))], \
-               samples, occupancy
+        return 0, partial_pcd, [np.array(mesh.vertices), np.array(mesh.triangles)], samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)

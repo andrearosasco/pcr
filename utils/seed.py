@@ -11,15 +11,14 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
-def get_generator():
+def get_generator(seed):
     generator = torch.Generator()
-    generator.manual_seed(TrainConfig.seed)
+    generator.manual_seed(seed)
     return generator
 
 
-def enable_reproducibility():
+def enable_reproducibility(seed):
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-    seed = TrainConfig.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -27,6 +26,3 @@ def enable_reproducibility():
     torch.backends.cudnn.deterministic = True
 
 
-if __name__ == "__main__":
-    enable_reproducibility()
-    print(torch.initial_seed())
