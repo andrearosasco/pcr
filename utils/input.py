@@ -1,8 +1,10 @@
-import yarp
+import os
+# import yarp
 import cv2
-import pyrealsense2 as rs
+# import pyrealsense2 as rs
 import numpy as np
 import open3d as o3d
+from scipy.io import loadmat
 
 
 class iCubGazebo:
@@ -124,6 +126,62 @@ class RealSense:
 
     def stop(self):
         self.pipeline.stop()
+
+
+class YCBVideoReader:
+    def __init__(self, data_path="/home/IIT.LOCAL/arosasco/projects/DenseFusion/datasets/ycb/YCB_Video_Dataset"):
+        self.data_path = os.path.join(data_path, "data")
+        self.video_list = os.listdir(self.data_path)
+        self.video_id = 0
+        self.frame_id = 1
+
+    def get_frame(self):
+
+        # Check if dataset is over
+        if self.video_id > len(self.video_list):
+            return None
+
+        # Create right path
+        video_path = os.path.join(self.data_path, self.video_list[self.video_id])
+        str_id = str(self.frame_id)
+        str_id = '0' * (6 - len(str_id)) + str_id
+        frame_path = os.path.join(video_path, str_id)
+
+        # Open bounding boxes
+        boxes_path = frame_path + '-box.txt'
+        boxes = {}
+        with open(boxes_path, "r") as f:
+            lines = f.readlines()
+        for line in lines:
+            line = line.split(' ')
+            boxes[line[0]] = [float(line[1]), float(line[2]), float(line[3]), float(line[4])]
+
+        # Open rgb image
+        rgb_path = frame_path + '-color.png'
+        rgb = cv2.imread(rgb_path)
+
+        # Open depth image
+        depth_path = frame_path + '-depth.png'
+        depth = cv2.imread(depth_path)
+
+        # Open label image
+        label_path = frame_path + '-label.png'
+        label = cv2.imread(label_path)
+
+        # Open
+        mat_path = frame_path + '-meta.mat'
+        meta = loadmat(mat_path)
+
+        # Next frame (or next video)
+        self.frame_id += 1
+        str_id = str(self.frame_id)
+        str_id = '0' * (6 - len(str_id)) + str_id
+        frame_path = os.path.join(video_path, str_id)
+        if not os.path.exists(frame_path + '-box.txt'):
+            self.frame_id = 1
+            self.video_id += 1
+
+        return frame_path, boxes, rgb, depth, label, meta
 
 
 if __name__ == '__main__':
