@@ -344,7 +344,7 @@ if __name__ == '__main__':
     wandb.login()
     wandb.init(project="train_box")
     wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
-    wandb.watch(model, log='all', log_freq=TrainConfig.log_metrics_every)
+    wandb.watch(model, log='all', log_freq=EvalConfig.log_metrics_every)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -356,7 +356,8 @@ if __name__ == '__main__':
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
                          gpus=1,
-                         log_every_n_steps=TrainConfig.log_metrics_every,
+                         log_every_n_steps=EvalConfig.log_metrics_every,
+                         check_val_every_n_epoch=EvalConfig.val_every,
                          logger=[wandb_logger],
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',

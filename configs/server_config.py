@@ -18,7 +18,7 @@ class DataConfig:
     noise_rate = 0.01
     tolerance = 0.0
     train_samples = 10000
-    val_samples = 100
+    val_samples = 1024
 
 
 @dataclass
@@ -56,9 +56,8 @@ class TrainConfig:
     lr = 1e-4
     wd = 0.0
     mb_size = 64
-    n_epoch = 500
+    n_epoch = 2000
     clip_value = 1 # 0.5?
-    log_metrics_every = 100
     seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
@@ -76,9 +75,11 @@ class TrainConfig:
 @dataclass
 class EvalConfig:
     grid_eval = False
-    grid_res_step = 0.04
+    grid_res_step = 0.01
     tolerance = DataConfig.tolerance
     dist = DataConfig.dist
     noise_rate = DataConfig.noise_rate
 
-    mb_size = 32
+    mb_size = 8
+    log_metrics_every = 100
+    val_every = 10
