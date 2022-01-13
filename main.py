@@ -110,13 +110,13 @@ class HyperNetwork(pl.LightningModule):
             num_workers=TrainConfig.num_workers,
             pin_memory=True)
 
-    def forward(self, partial, object_id=None, step=0.04):
+    def forward(self, partial, object_id=None, step=0.01):
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
 
         fast_weights, _ = self.backbone(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
-        return prediction
+        return samples[prediction.squeeze(-1) > 0.5]
 
     def configure_optimizers(self):
         optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)
