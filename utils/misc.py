@@ -443,4 +443,20 @@ def check_mesh_contains(meshes, queries, tolerance=0.01):
     return occupancies
 
 
+def from_depth_to_pc(depth, intrinsics, depth_factor=10000.):
+    fx, fy, cx, cy = intrinsics
+    points = []
+    h, w = depth.shape
+    for u in range(0, h):
+        for v in range(0, w):
+            z = depth[u, v]
+            if z != 0:
+                z = z / depth_factor
+                x = ((v - cx) * z) / fx
+                y = ((u - cy) * z) / fy
+                points.append([x, y, z])
+    points = np.array(points)
+    return points
+
+
 

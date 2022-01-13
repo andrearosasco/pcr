@@ -1,10 +1,14 @@
 import json
+import os
 from pathlib import Path
-
 # import cv2
 # import pyrealsense2 as rs
+import cv2
 import numpy as np
 import open3d as o3d
+from PIL import Image
+from scipy.io import loadmat
+
 
 class RealSense:
     def __init__(self, width=640, heigth=480):
@@ -96,6 +100,103 @@ class RealSense:
 
     def stop(self):
         self.pipeline.stop()
+
+
+class YCBVideoReader:
+    def __init__(self, data_path="/home/IIT.LOCAL/arosasco/projects/DenseFusion/datasets/ycb/YCB_Video_Dataset"):
+        self.root_path = data_path
+        self.data_path = os.path.join(data_path, "data")
+        self.video_list = os.listdir(self.data_path)
+        self.video_id = 0
+        self.frame_id = 1
+        self.intrinsics_1 = {
+            'fx': 1066.778, 'fy': 1067.487,
+            'cx': 312.9869, 'cy': 241.3109,
+        }
+
+        self.intrinsics_2 = {
+            'fx': 1077.836, 'fy': 1078.189,
+            'cx': 323.7872, 'cy': 279.6921,
+        }
+
+    def get_xyz_by_name(self, name):
+        path = os.path.join(self.root_path, "models")
+        obj_path = os.path.join(path, name)
+        obj_path = os.path.join(obj_path, 'points.xyz')
+        points = np.genfromtxt(obj_path, delimiter=' ')
+        return points
+
+    def get_mesh_path_by_id(self, index):
+        path = os.path.join(self.root_path, "models")
+        models = os.listdir(path)
+        models_dict = {}
+        for elem in models:
+            obj_ind, _ = elem.split('_', maxsplit=1)
+            obj_ind = str(int(obj_ind))
+            models_dict[obj_ind] = elem
+        obj_path = os.path.join(path, models_dict[str(index)])
+        obj_path = os.path.join(obj_path, 'textured.obj')
+        # points = np.genfromtxt(obj_path, delimiter=' ')
+        return obj_path
+
+    def get_frame(self):
+
+        # Check if dataset is over
+        if self.video_id > len(self.video_list):
+            return None
+
+        # Create right path
+        video_path = os.path.join(self.data_path, self.video_list[self.video_id])
+        str_id = str(self.frame_id)
+        str_id = '0' * (6 - len(str_id)) + str_id
+        frame_path = os.path.join(video_path, str_id)
+
+        # Open bounding boxes
+        boxes_path = frame_path + '-box.txt'
+        boxes = {}
+        with open(boxes_path, "r") as f:
+            lines = f.readlines()
+        for line in lines:
+            line = line.split(' ')
+            boxes[line[0]] = [float(line[1]), float(line[2]), float(line[3]), float(line[4])]
+
+        # Open rgb image
+        rgb_path = frame_path + '-color.png'
+        rgb = cv2.imread(rgb_path)
+
+        # Open depth image
+        depth_path = frame_path + '-depth.png'
+        depth = Image.open(depth_path)
+        depth = np.array(depth)
+
+        # Open label image
+        label_path = frame_path + '-label.png'
+        label = cv2.imread(label_path)
+
+        # Open meta
+        mat_path = frame_path + '-meta.mat'
+        meta = loadmat(mat_path)
+
+        # Select appropriate intrinsics
+        # is_syn = len(self.frames[idx].split('/')) == 2  TODO ADD ALSO THIS
+        if self.video_id <= 59:
+            intrinsics = self.intrinsics_1
+        else:
+            intrinsics = self.intrinsics_2
+
+        # Next frame (or next video)
+        self.frame_id += 1
+        str_id = str(self.frame_id)
+        str_id = '0' * (6 - len(str_id)) + str_id
+        frame_path = os.path.join(video_path, str_id)
+        if not os.path.exists(frame_path + '-box.txt'):
+            self.frame_id = 1
+            self.video_id += 1
+
+        # Remove last dimension from label (redundant)
+        label = label[..., 0]
+
+        return frame_path, boxes, rgb, depth, label, meta, intrinsics
 
 
 if __name__ == '__main__':

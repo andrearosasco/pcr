@@ -154,3 +154,5 @@ point-cloud-to-gif
 /ours/lightning_logs/
 checkpoint
 /data/ShapeNetCore.v2/data/
+fake_YCB
+eraseme.py
