@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data import DataLoader
 from datasets.ShapeNetPOV import ShapeNet
-from models.HyperNetwork import HyperNetwork
+from model.HyperNetwork import HyperNetwork
 import torch
 from configs import DataConfig, ModelConfig, TrainConfig
 from tqdm import tqdm

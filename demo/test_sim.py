@@ -3,7 +3,7 @@ import open3d as o3d
 import numpy as np
 import torch
 from utils.pose_generator import PoseGenerator
-from models import HyperNetwork
+from model import HyperNetwork
 from utils.input import iCubGazebo
 import cv2
 from utils.output import PoseVisualizer

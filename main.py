@@ -1,6 +1,4 @@
-
 from utils.reproducibility import make_reproducible
-
 from utils.lightning import SplitProgressBar
 
 try:
@@ -16,7 +14,7 @@ from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
 from pytorch_lightning.callbacks import ModelCheckpoint
-from models.PCRNetwork import PCRNetwork as Model
+from model.PCRNetwork import PCRNetwork as Model
 import pytorch_lightning as pl
 
 if __name__ == '__main__':

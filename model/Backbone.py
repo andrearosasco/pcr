@@ -1,7 +1,7 @@
 from torch import nn
 
-from models.MLP import MLP
-from models.Transformer import PCTransformer
+from model.MLP import MLP
+from model.Transformer import PCTransformer
 
 
 class BackBone(nn.Module):

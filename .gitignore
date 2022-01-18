@@ -156,3 +156,5 @@ checkpoint
 /data/ShapeNetCore.v2/data/
 fake_YCB
 eraseme.py
+/data/ShapeNet55-34/data/
+/assets/

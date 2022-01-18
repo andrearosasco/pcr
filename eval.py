@@ -12,7 +12,7 @@ from pytorch_lightning.loggers import WandbLogger
 
 import random
 import numpy as np
-from models.HyperNetwork import BackBone, ImplicitFunction, HyperNetwork
+from model.HyperNetwork import BackBone, ImplicitFunction, HyperNetwork
 import torch
 
 import pytorch_lightning as pl
