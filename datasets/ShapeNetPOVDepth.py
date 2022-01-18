@@ -1,10 +1,8 @@
+import open3d as o3d
 from pathlib import Path
-
-import cv2
 import numpy as np
 import torch
 import torch.utils.data as data
-import open3d as o3d
 from open3d import visualization
 from open3d.cpu.pybind.visualization import draw_geometries
 
@@ -16,9 +14,10 @@ except ImportError:
     from open3d.cpu.pybind import camera
 from torch.utils.data import DataLoader
 
-o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 from utils.misc import sample_point_cloud, create_cube
 from scipy.spatial.transform import Rotation as R
+
+o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 
 class ShapeNet(data.Dataset):
     def __init__(self, config, mode="easy/train", overfit_mode=False):

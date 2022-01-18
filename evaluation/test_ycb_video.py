@@ -6,7 +6,7 @@ from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
 from sklearn.cluster import DBSCAN
 from configs import server_config
-from main import HyperNetwork
+from model.PCRNetwork import PCRNetwork as Model
 from utils.input import YCBVideoReader
 import numpy as np
 from utils.misc import from_depth_to_pc
@@ -50,7 +50,7 @@ if __name__ == "__main__":
             points = points / (var * 2)  #(var * 2) (1040*2)
 
             # Load model
-            model = HyperNetwork.load_from_checkpoint('./checkpoint/final', config=server_config.ModelConfig)
+            model = Model.load_from_checkpoint('./checkpoint/final', config=server_config.ModelConfig)
             model.cuda()
             model.eval()
 
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             # t = np.vstack([meta['poses'][:, :, i], np.eye(4)[3, :]])
 
             # Load model
-            model = HyperNetwork.load_from_checkpoint('./checkpoint/latest', config=server_config.ModelConfig)
+            model = Model.load_from_checkpoint('./checkpoint/latest', config=server_config.ModelConfig)
             model.cuda()
             model.eval()
 
@@ -100,8 +100,6 @@ if __name__ == "__main__":
 
             complete = PointCloud()
             complete.points = Vector3dVector(obj_xyz)
-            # complete.transform(t)
-            # complete.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
 
             complete.paint_uniform_color([255, 0, 0])
             partial.paint_uniform_color([0, 255, 0])
@@ -111,5 +109,3 @@ if __name__ == "__main__":
             np.save("test1", points)  # TODO REMOVE DEBUG
             np.save("test2", obj_xyz)  # TODO REMOVE DEBUG
             print(os.getcwd())  # TODO REMOVE DEBUG
-
-            pass

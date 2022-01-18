@@ -1,1 +1,1 @@
-from model import PCRNetwork
+from model.PCRNetwork import PCRNetwork

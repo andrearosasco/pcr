@@ -39,3 +39,4 @@ class TrainConfig(server_config.TrainConfig):
 class EvalConfig(server_config.EvalConfig):
     grid_res_step = 0.04
     mb_size = 32
+    wandb = False

@@ -8,30 +8,10 @@ from open3d.cpu.pybind.geometry import PointCloud
 from open3d.cpu.pybind.utility import Vector3dVector
 from sklearn.cluster import DBSCAN
 from configs import server_config
-from main import HyperNetwork
+from model import PCRNetwork
 from utils.input import YCBVideoReader
 import numpy as np
-from utils.misc import from_depth_to_pc
-from scipy.spatial.transform import Rotation as R
-
-
-def project( rgb, points):
-    k = np.eye(3)
-    k[0, :] = np.array([1066.778, 0, 312.9869])
-    k[1, 1:] = np.array([1067.487, 241.3109])
-
-    points = np.array(points) * 10000.0
-    uv = k @ points.T
-    uv = uv[0:2] / uv[2, :]
-
-    uv = np.round(uv, 0).astype(int)
-
-    uv[0, :] = np.clip(uv[0, :], 0, 639)
-    uv[1, :] = np.clip(uv[1, :], 0, 479)
-
-    rgb[uv[1, :], uv[0, :], :] = np.tile((np.array([1, 0, 0]) * 255).astype(int), (uv.shape[1], 1))
-
-    return rgb
+from utils.misc import from_depth_to_pc, project_pc
 
 if __name__ == "__main__":
     box_cls = {"003_cracker_box": 2,
@@ -73,7 +53,7 @@ if __name__ == "__main__":
             points = points / (var * 2)  #(var * 2) (1040*2)
 
             # Load model
-            model = HyperNetwork.load_from_checkpoint('./checkpoint/final', config=server_config.ModelConfig)
+            model = PCRNetwork.load_from_checkpoint('./checkpoint/final', config=server_config.ModelConfig)
             model.cuda()
             model.eval()
 
@@ -104,7 +84,7 @@ if __name__ == "__main__":
             t[0:3, 3] = mean
             aux.transform(t)
             # idx = np.random.choice(np.array(aux.points).shape[0], 2500, replace=False)
-            res = project(rgb, np.array(aux.points))
+            res = project_pc(rgb, np.array(aux.points))
             cv2.imshow('projection', res)
             cv2.imwrite(f'proj_{j}.png', res)
 

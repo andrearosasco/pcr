@@ -1,10 +1,10 @@
+import random
+
 import open3d as o3d
 from pathlib import Path
 import numpy as np
 import torch
 import torch.utils.data as data
-from matplotlib import pyplot as plt
-from matplotlib.pyplot import hist
 from numpy.random import uniform
 from open3d import visualization
 
@@ -20,11 +20,9 @@ except ImportError:
     from open3d.cpu.pybind.visualization import draw_geometries
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation as R
-import random
-import time
 
-from utils.misc import sample_point_cloud, sample_point_cloud2, create_cube
 
+from utils.misc import sample_point_cloud
 
 
 class BoxNet(data.Dataset):
@@ -47,7 +45,7 @@ class BoxNet(data.Dataset):
         self.mesh_angle = {'low': 0, 'high': 360}
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
-
+        # print(random.random())
         # Need to resample the image when the object is too far from the camera (the depth image is empty)
         #   or when, after normalization, the full point cloud doesn't fit the input/output space.
         while True:
@@ -114,25 +112,14 @@ class BoxNet(data.Dataset):
             # Normalize the partial point cloud (all we can do at test time)
             depth_image = o3d.geometry.Image(depth)
 
-            # cv2.imshow('', np.array(depth))
-            # cv2.waitKey(0)
-
-            partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image, camera_parameters.intrinsic, camera_parameters.extrinsic)
+            partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image,
+                                                                          camera_parameters.intrinsic,
+                                                                          camera_parameters.extrinsic)
             partial_pcd = np.array(partial_pcd.points)
 
-            # pc = PointCloud()
-            # pc.points = Vector3dVector(partial_pcd)
-            # draw_geometries([pc, mesh, o3d.geometry.TriangleMesh.create_coordinate_frame(origin=[0, 0, 0], size=1000).transform([[1, 0, 0, 0],
-            #                                             [0, 1, 0, 0],
-            #                                             [0, 0, 1, dist],
-            #                                             [0, 0, 0, 1]]),
-            #                  o3d.geometry.TriangleMesh.create_coordinate_frame(origin=[0, 0, 0], size=1000)])
-            # print(dist)
-            # print(np.mean(partial_pcd, axis=0))
-
             # Normalize the part ial point cloud (all we could do at test time)
-            mean = np.mean(np.array(partial_pcd), axis=0)
-            partial_pcd = np.array(partial_pcd) - mean
+            mean = np.mean(partial_pcd, axis=0)
+            partial_pcd = partial_pcd - mean
             var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
 
             partial_pcd = partial_pcd / (var * 2) #(var * 2) (1040*2)
@@ -147,19 +134,9 @@ class BoxNet(data.Dataset):
             t2 = np.all(np.max(aux, axis=0) < 0.5)
 
             if not (t1 and t2):
-                # # # TODO Tests START
-                # complete_pcd = mesh.sample_points_uniformly(self.partial_points)
-                # complete_pcd.paint_uniform_color([1, 0, 0])
-                #
-                # pc = PointCloud()
-                # pc.points = Vector3dVector(partial_pcd)
-                # pc.paint_uniform_color([0, 0, 1])
-                # draw_geometries([complete_pcd, create_cube(), pc])
-                # # # TODO Tests END
                 continue
 
             break
-
 
         # Sample labeled point on the mesh
         samples, occupancy = sample_point_cloud(mesh,
@@ -197,8 +174,6 @@ class BoxNet(data.Dataset):
 if __name__ == "__main__":
     from configs.local_config import DataConfig
     from tqdm import tqdm
-    # from open3d.cpu.pybind.geometry import PointCloud
-    # from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
 
     a = DataConfig()
     a.dataset_path = Path("..", "data", "ShapeNetCore.v2")

@@ -152,21 +152,6 @@ class GenPose:
         self.vis.update_renderer()
 
 
-def fp_sampling(points, num, starting_point=None):
-    batch_size = points.shape[0]
-    # If no starting_point is provided, the starting point is the first point of points
-    if starting_point is None:
-        starting_point = points[:, 0].unsqueeze(1)
-    D = cdist(starting_point, points).squeeze(1)
-
-    perm = torch.zeros((batch_size, num), dtype=torch.int32, device=points.device)
-    ds = D
-    for i in range(0, num):
-        idx = torch.argmax(ds, dim=1)
-        perm[:, i] = idx
-        ds = torch.minimum(ds, cdist(points[torch.arange(batch_size), idx].unsqueeze(1), points).squeeze())
-
-    return perm
 
 
 class iCubGazebo:

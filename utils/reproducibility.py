@@ -12,7 +12,6 @@ def make_reproducible(seed):
     torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
     numpy.random.seed(seed)  # Numpy module.
     random.seed(seed)  # Python random module.
-    torch.manual_seed(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     torch.use_deterministic_algorithms(True)
@@ -24,10 +23,15 @@ def get_generator(seed):
     return generator
 
 
-def get_init_fn(seed):
-    def init_fn():
+class get_init_fn:
+    def __init__(self, seed):
+        self.seed = seed
+
+    def __call__(self, worker_id):
+        seed = self.seed + worker_id + 1
+
         numpy.random.seed(seed)
         random.seed(seed)
-
-    return init_fn()
-
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)

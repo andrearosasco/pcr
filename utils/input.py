@@ -1,6 +1,4 @@
-import json
 import os
-from pathlib import Path
 # import cv2
 # import pyrealsense2 as rs
 import cv2

@@ -18,6 +18,8 @@ class DataConfig:
     train_samples = 10000
     val_samples = 1024
 
+    n_classes = 1
+
 
 @dataclass
 class ModelConfig:
@@ -81,3 +83,4 @@ class EvalConfig:
     mb_size = 8
     log_metrics_every = 100
     val_every = 10
+    wandb = True

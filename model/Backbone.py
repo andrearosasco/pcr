@@ -64,8 +64,6 @@ class BackBone(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, xyz, object_id=None):
-        # xyz = torch.reshape(xyz, (xyz.shape[0], -1))
-        # global_feature = self.test(xyz)
 
         global_feature = self.transformer(xyz)  # B M C and B M 3
 

@@ -1,41 +1,34 @@
-import random
+from abc import ABC
+
 import numpy as np
 import torch
-import wandb
-from utils.metrics import chamfer_distance
+
+from utils.metrics import chamfer_batch
 from utils.reproducibility import get_init_fn, get_generator
 from .Backbone import BackBone
 from .ImplicitFunction import ImplicitFunction
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
-except:
+    from open3d.cuda.pybind.geometry import PointCloud
+except ImportError:
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
-from pytorch_lightning import LightningModule
-from torch import nn
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
-from torchmetrics import MeanMetric, F1, Recall, Precision, Accuracy
-import open3d as o3d
+    from open3d.cpu.pybind.geometry import PointCloud
 
 from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
-from datasets.BoxNetPOVRemoval import BoxNet
-from utils.misc import check_mesh_contains, create_3d_grid, chamfer
-from .Transformer import PCTransformer
 
 from torchmetrics import Accuracy, Precision, Recall, F1, MeanMetric
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from datasets.BoxNetPOVDepth import BoxNet as Dataset
 
-import copy
-from utils.misc import create_3d_grid, check_mesh_contains, create_cube, sample_point_cloud
+from utils.misc import create_3d_grid, check_mesh_contains, sample_point_cloud
 import open3d as o3d
-import wandb
 import pytorch_lightning as pl
+import wandb
 
 
-class PCRNetwork(pl.LightningModule):
+class PCRNetwork(pl.LightningModule, ABC):
 
     def __init__(self, config):
         super().__init__()
@@ -54,6 +47,8 @@ class PCRNetwork(pl.LightningModule):
         self.avg_loss = MeanMetric()
         self.avg_chamfer = MeanMetric()
 
+        self.training_set, self.valid_set = None, None
+
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
     #         nn.init.constant_(m.bias, 0)
@@ -66,7 +61,6 @@ class PCRNetwork(pl.LightningModule):
 
     def prepare_data(self):
         self.training_set = Dataset(DataConfig, DataConfig.train_samples)
-
         self.valid_set = Dataset(DataConfig, DataConfig.val_samples)
 
     def train_dataloader(self):
@@ -203,7 +197,7 @@ class PCRNetwork(pl.LightningModule):
             pred, trgt = output['out2'], output['target2'].int()
 
         self.accuracy(pred, trgt), self.precision_(pred, trgt)
-        self.avg_chamfer(chamfer(output['samples1'], output['out1'], mesh))
+        self.avg_chamfer(chamfer_batch(output['samples1'], output['out1'], mesh))
         self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
 
         return output
@@ -244,7 +238,6 @@ class PCRNetwork(pl.LightningModule):
             recall_pc = torch.cat((samples.cpu(), colors), dim=-1).detach().cpu().numpy()
             recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
-            # complete = o3d.io.read_triangle_mesh(mesh[-1], False)
             complete = mesh
 
             complete = complete.sample_points_uniformly(10000)
@@ -254,42 +247,16 @@ class PCRNetwork(pl.LightningModule):
             partial = np.array(partial.squeeze())
 
             # TODO Fix partial and Add colors
-            # pc = PointCloud()
-            # pc.points = Vector3dVector(partial)
-            # o3d.visualization.draw_geometries([mesh, pc], window_name="Partial")
+            if EvalConfig.wandb:
+                pc = PointCloud()
+                pc.points = Vector3dVector(partial)
+                o3d.visualization.draw_geometries([mesh, pc], window_name="Partial")
 
-            # self.trainer.logger.experiment[0].log(
-            #     {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
-            # self.trainer.logger.experiment[0].log(
-            #     {f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
-            # self.trainer.logger.experiment[0].log(
-            #     {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
-            # self.trainer.logger.experiment[0].log(
-            #     {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
-            pass
-
-
-def print_memory():
-    import gc
-    i = 0
-    for obj in gc.get_objects():
-        try:
-            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                if obj.is_cuda:
-                    i += obj.reshape(-1, 1).shape[0]
-        except:
-            pass
-
-    print(i)
-
-
-def chamfer(samples, predictions, meshes):
-    distances = []
-    for mesh, pred in zip(meshes, predictions):
-        pc1 = samples[0, (pred > 0.5).squeeze()].unsqueeze(0)
-        if pc1.shape[1] == 0:
-            pc1 = torch.zeros(pc1.shape[0], 1, pc1.shape[2], device=TrainConfig.device)
-        pc2 = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0).to(TrainConfig.device)
-
-        distances.append(chamfer_distance(pc1, pc2))
-    return torch.stack(distances).mean().detach().cpu()
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
