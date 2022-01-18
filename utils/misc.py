@@ -9,6 +9,9 @@ import torch.nn.functional as F
 import os
 from collections import abc
 import tqdm
+
+from configs import TrainConfig
+
 try:
     from open3d.cuda.pybind.geometry import PointCloud
     from open3d.cuda.pybind.utility import Vector3dVector
@@ -319,8 +322,8 @@ def sample_point_cloud(mesh, n_points=8192, dist=None, noise_rate=0.1, tolerance
     n_mesh = n_points - (n_uniform + n_noise)
 
     points_uniform = np.random.rand(n_uniform, 3) - 0.5
-    points_noisy = np.array(mesh.sample_points_uniformly(n_noise).points) + np.random.normal(0, noise_rate, (n_noise, 3))
-    points_surface = np.array(mesh.sample_points_uniformly(n_mesh).points)
+    points_noisy = np.array(mesh.sample_points_uniformly(n_noise, seed=TrainConfig.seed).points) + np.random.normal(0, noise_rate, (n_noise, 3))
+    points_surface = np.array(mesh.sample_points_uniformly(n_mesh, seed=TrainConfig.seed).points)
 
     points = np.concatenate([points_uniform, points_noisy, points_surface], axis=0)
 

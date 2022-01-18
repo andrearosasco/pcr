@@ -11,8 +11,6 @@ class DataConfig:
     dataset_path = "data/ShapeNetCore.v2"
     partial_points = 2048
     multiplier_complete_sampling = 50
-      # amount of noise added to the point sampled on the mesh
-      # number of uniformly sampled points
     implicit_input_dimension = 8192
     dist = [0.1, 0.4, 0.5]
     noise_rate = 0.01
@@ -58,7 +56,7 @@ class TrainConfig:
     mb_size = 64
     n_epoch = 2000
     clip_value = 1 # 0.5?
-    seed = 1   # 1234 5678 does not converge int(datetime.now().timestamp())
+    seed = 1  # int(datetime.now().timestamp())
     # WARNING: Each worker load a different batches so we may end up with
     #   20 * 64 batches loaded simultaneously. Moving the batches to cuda inside the
     #   dataset can lead to OOM errors

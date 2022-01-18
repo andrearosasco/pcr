@@ -2,6 +2,8 @@ import torch
 from torch import nn
 
 # Conv1D with kernel 1 is analogous to Linear
+# But technically a convolutional network with a conv1d at the end instead of
+# a linear layer, can support image of variable size.
 conv = nn.Conv1d(3, 8, 1)
 
 w = conv.weight.detach().clone().permute(2, 1, 0)
