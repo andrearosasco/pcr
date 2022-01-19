@@ -171,3 +171,14 @@ def project_pc(rgb, points):
     return rgb
 
 
+def project_onto_plane(x, n):
+    d = np.dot(x, n) / np.linalg.norm(n)
+    n = n / np.linalg.norm(n)
+    p = d * n
+    return x - p
+
+
+def angle_between(v1, v2):
+    v1_u = v1 / np.linalg.norm(v1)
+    v2_u = v2 / np.linalg.norm(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))

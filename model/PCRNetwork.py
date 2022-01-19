@@ -90,7 +90,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         fast_weights, _ = self.backbone(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
-        return samples[prediction.squeeze(-1) > 0.5]
+        return samples[prediction.squeeze(-1) > 0.5], fast_weights
 
     def configure_optimizers(self):
         optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)
