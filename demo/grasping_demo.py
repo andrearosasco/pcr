@@ -6,7 +6,7 @@ from configs import DataConfig
 from datasets.BoxNetPOVRemoval import BoxNet  # NOTE it cant work with BoxNetPOVDepth
 from utils.pose_generator import PoseGenerator
 from utils.pointcloud_reconstructor import PointCloudReconstructor
-from models import HyperNetwork
+from model import HyperNetwork
 from utils.output import PoseVisualizer
 import msvcrt
 from configs.server_config import ModelConfig

@@ -1,61 +1,34 @@
-import os
+from abc import ABC
 
-from torch.optim import SGD
+import numpy as np
+import torch
 
-from utils.lightning import SplitProgressBar
-from utils.metrics import chamfer_distance
+from utils.metrics import chamfer_batch
+from utils.reproducibility import get_init_fn, get_generator
+from .Backbone import BackBone
+from .ImplicitFunction import ImplicitFunction
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
-    from open3d.cuda.pybind.visualization import draw_geometries
     from open3d.cuda.pybind.geometry import PointCloud
 except ImportError:
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
-    from open3d.cpu.pybind.visualization import draw_geometries
     from open3d.cpu.pybind.geometry import PointCloud
 
 from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
 
-os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
-from pytorch_lightning.callbacks import GPUStatsMonitor, ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
 from torchmetrics import Accuracy, Precision, Recall, F1, MeanMetric
-import random
-import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from datasets.BoxNetPOVDepth import BoxNet as Dataset
-from models.HyperNetwork import BackBone, ImplicitFunction
-import torch
-import copy
-from utils.misc import create_3d_grid, check_mesh_contains, create_cube, sample_point_cloud
+
+from utils.misc import create_3d_grid, check_mesh_contains, sample_point_cloud
 import open3d as o3d
-import wandb
 import pytorch_lightning as pl
+import wandb
 
 
-# =======================  Reproducibility =======================
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2 ** 32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-seed = TrainConfig.seed
-torch.manual_seed(seed)
-np.random.seed(seed)
-random.seed(seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-generator = torch.Generator()
-generator.manual_seed(TrainConfig.seed)
-
-
-# ================================================================
-
-
-class HyperNetwork(pl.LightningModule):
+class PCRNetwork(pl.LightningModule, ABC):
 
     def __init__(self, config):
         super().__init__()
@@ -74,6 +47,8 @@ class HyperNetwork(pl.LightningModule):
         self.avg_loss = MeanMetric()
         self.avg_chamfer = MeanMetric()
 
+        self.training_set, self.valid_set = None, None
+
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
     #         nn.init.constant_(m.bias, 0)
@@ -86,7 +61,6 @@ class HyperNetwork(pl.LightningModule):
 
     def prepare_data(self):
         self.training_set = Dataset(DataConfig, DataConfig.train_samples)
-
         self.valid_set = Dataset(DataConfig, DataConfig.val_samples)
 
     def train_dataloader(self):
@@ -96,8 +70,8 @@ class HyperNetwork(pl.LightningModule):
                         drop_last=True,
                         num_workers=TrainConfig.num_workers,
                         pin_memory=True,
-                        worker_init_fn=seed_worker,
-                        generator=generator)
+                        worker_init_fn=get_init_fn(TrainConfig.seed),
+                        generator=get_generator(TrainConfig.seed))
 
         return dl
 
@@ -121,7 +95,6 @@ class HyperNetwork(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)
         return optimizer
-
 
     def on_train_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
@@ -163,6 +136,8 @@ class HyperNetwork(pl.LightningModule):
         pred, trgt = torch.sigmoid(output['out']).detach().cpu(), output['target'].unsqueeze(-1).int().detach().cpu()
 
         # This log the metrics on the current batch and accumulate it in the average
+        print(self.avg_loss(output['loss'].detach().cpu()))
+        exit()
         self.log('train/accuracy', self.accuracy(pred, trgt))
         self.log('train/precision', self.precision_(pred, trgt))
         self.log('train/recall', self.recall(pred, trgt))
@@ -184,8 +159,9 @@ class HyperNetwork(pl.LightningModule):
         # The sampling on the grid simulate the evaluation process
         # But if we use tolerance=0.0 we are not able to extract a ground truth
         samples1 = create_3d_grid(batch_size=label.shape[0],
-                                   step=EvalConfig.grid_res_step).to(TrainConfig.device)
-        occupancy1 = check_mesh_contains(meshes_list, samples1.cpu().numpy(), tolerance=EvalConfig.tolerance).tolist()  # TODO PARALLELIZE IT
+                                  step=EvalConfig.grid_res_step).to(TrainConfig.device)
+        occupancy1 = check_mesh_contains(meshes_list, samples1.cpu().numpy(),
+                                         tolerance=EvalConfig.tolerance).tolist()  # TODO PARALLELIZE IT
         occupancy1 = torch.FloatTensor(occupancy1).to(TrainConfig.device)
 
         # The sampling with "sample_point_cloud" simulate the sampling used during training
@@ -194,7 +170,7 @@ class HyperNetwork(pl.LightningModule):
         samples2, occupancy2 = [], []
         for mesh in meshes_list:
             s, o = sample_point_cloud(mesh, n_points=DataConfig.implicit_input_dimension, dist=EvalConfig.dist,
-                                                    noise_rate=EvalConfig.noise_rate, tolerance=EvalConfig.tolerance)
+                                      noise_rate=EvalConfig.noise_rate, tolerance=EvalConfig.tolerance)
             samples2.append(s), occupancy2.append(o)
         samples2 = torch.tensor(np.array(samples2)).float().to(TrainConfig.device)
         occupancy2 = torch.tensor(occupancy2, dtype=torch.float).unsqueeze(-1).to(TrainConfig.device)
@@ -221,7 +197,7 @@ class HyperNetwork(pl.LightningModule):
             pred, trgt = output['out2'], output['target2'].int()
 
         self.accuracy(pred, trgt), self.precision_(pred, trgt)
-        self.avg_chamfer(chamfer(output['samples1'], output['out1'], mesh))
+        self.avg_chamfer(chamfer_batch(output['samples1'], output['out1'], mesh))
         self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
 
         return output
@@ -262,7 +238,6 @@ class HyperNetwork(pl.LightningModule):
             recall_pc = torch.cat((samples.cpu(), colors), dim=-1).detach().cpu().numpy()
             recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
-            # complete = o3d.io.read_triangle_mesh(mesh[-1], False)
             complete = mesh
 
             complete = complete.sample_points_uniformly(10000)
@@ -272,99 +247,16 @@ class HyperNetwork(pl.LightningModule):
             partial = np.array(partial.squeeze())
 
             # TODO Fix partial and Add colors
-            # pc = PointCloud()
-            # pc.points = Vector3dVector(partial)
-            # o3d.visualization.draw_geometries([mesh, pc], window_name="Partial")
+            if EvalConfig.wandb:
+                pc = PointCloud()
+                pc.points = Vector3dVector(partial)
+                o3d.visualization.draw_geometries([mesh, pc], window_name="Partial")
 
-            self.trainer.logger.experiment[0].log(
-                {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
-            self.trainer.logger.experiment[0].log(
-                {f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
-            self.trainer.logger.experiment[0].log(
-                {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
-            self.trainer.logger.experiment[0].log(
-                {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
-            pass
-
-
-def visualize(meshes, partials):
-    mesh_paths, rotations, means, vars = meshes
-    p, r, m, v = mesh_paths[0], rotations[0], means[0], vars[0]
-
-    mesh1 = o3d.io.read_triangle_mesh(p, False)
-    mesh2 = copy.deepcopy(mesh1)
-    mesh1.rotate(r.cpu().numpy())
-    mesh1.translate(-m.cpu().numpy())
-    mesh1.scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0])
-
-    pc = PointCloud()
-    pc.points = Vector3dVector(partials[0].cpu().numpy())
-
-    draw_geometries([mesh1, mesh2, pc, create_cube()])
-
-
-def print_memory():
-    import gc
-    i = 0
-    for obj in gc.get_objects():
-        try:
-            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                if obj.is_cuda:
-                    i += obj.reshape(-1, 1).shape[0]
-        except:
-            pass
-
-    print(i)
-
-
-def chamfer(samples, predictions, meshes):
-    distances = []
-    for mesh, pred in zip(meshes, predictions):
-        pc1 = samples[0, (pred > 0.5).squeeze()].unsqueeze(0)
-        if pc1.shape[1] == 0:
-            pc1 = torch.zeros(pc1.shape[0], 1, pc1.shape[2], device=TrainConfig.device)
-        pc2 = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0).to(TrainConfig.device)
-
-        distances.append(chamfer_distance(pc1, pc2))
-    return torch.stack(distances).mean().detach().cpu()
-
-
-if __name__ == '__main__':
-    print(TrainConfig.num_workers)
-
-    model = HyperNetwork(ModelConfig)
-
-    config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
-                        not k.startswith("__")},
-              'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
-                        not k.startswith("__")},
-              'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-                       not k.startswith("__")}}
-
-    wandb.login()
-    wandb.init(project="train_box")
-    wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
-    wandb.watch(model, log='all', log_freq=EvalConfig.log_metrics_every)
-
-    checkpoint_callback = ModelCheckpoint(
-        monitor='valid/f1',
-        dirpath='checkpoint',
-        filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
-        mode='max',
-        auto_insert_metric_name=False)
-
-    trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
-                         precision=32,
-                         gpus=1,
-                         log_every_n_steps=EvalConfig.log_metrics_every,
-                         check_val_every_n_epoch=EvalConfig.val_every,
-                         logger=[wandb_logger],
-                         gradient_clip_val=TrainConfig.clip_value,
-                         gradient_clip_algorithm='value',
-                         num_sanity_val_steps=2,
-                         callbacks=[
-                                    SplitProgressBar(),
-                                    checkpoint_callback],
-                         )
-
-    trainer.fit(model)
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
+                self.trainer.logger.experiment[0].log(
+                    {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})

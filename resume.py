@@ -3,14 +3,14 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, GPUStatsMonitor
 from pytorch_lightning.loggers import WandbLogger
 from configs import TrainConfig, ModelConfig, DataConfig, EvalConfig
-from main import HyperNetwork
+from model import PCRNetwork as Model
 from utils.lightning import SplitProgressBar
 
 if __name__ == '__main__':
     id = '29o44g6w'
     ckpt = 'model-29o44g6w:v29'
 
-    model = HyperNetwork(ModelConfig)
+    model = Model(ModelConfig)
 
     config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
                         not k.startswith("__")},
