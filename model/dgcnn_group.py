@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from utils.misc import fp_sampling
+from utils.misc import fp_sampling, onnx_cdists
 
 
 class DGCNN_Grouper(nn.Module):
@@ -58,10 +58,11 @@ class DGCNN_Grouper(nn.Module):
         num_points_q = x_q.size(2)
 
         with torch.no_grad():
-            dist = torch.cdist(coor_k.transpose(1, 2), coor_q.transpose(1, 2))
+            # TODO use onnx_cdists just to export to onnx, otherwise use torch.cdist
+            dist = onnx_cdists(coor_k.transpose(1, 2), coor_q.transpose(1, 2))
             _, idx = torch.topk(dist, dim=1, k=16, largest=False)
 
-            assert idx.shape[1] == k
+            # assert idx.shape[1] == k
             idx_base = torch.arange(0, batch_size, device=x_q.device).view(-1, 1, 1) * num_points_k
             idx = idx + idx_base
             idx = idx.view(-1)

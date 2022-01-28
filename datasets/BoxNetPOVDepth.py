@@ -1,5 +1,6 @@
 import random
 
+import numpy
 import open3d as o3d
 from pathlib import Path
 import numpy as np
@@ -115,14 +116,23 @@ class BoxNet(data.Dataset):
             partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image,
                                                                           camera_parameters.intrinsic,
                                                                           camera_parameters.extrinsic)
-            partial_pcd = np.array(partial_pcd.points)
+            old_partial_pcd = np.array(partial_pcd.points)
 
             # Normalize the part ial point cloud (all we could do at test time)
-            mean = np.mean(partial_pcd, axis=0)
-            partial_pcd = partial_pcd - mean
+            mean = np.mean(old_partial_pcd, axis=0)
+            partial_pcd = old_partial_pcd - mean
             var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
 
-            partial_pcd = partial_pcd / (var * 2) #(var * 2) (1040*2)
+            partial_pcd = partial_pcd / (var * 2)  # (var * 2) (1040*2)
+            # numpy.seterr(all='raise')
+            # try:
+            #     partial_pcd = partial_pcd / (var * 2) #(var * 2) (1040*2)
+            # except FloatingPointError:
+            #     print(f'var={var}')
+            #     print(f'old_partial_pcd.sum()={np.sum(old_partial_pcd, axis=1)}')
+            #     print(f'partial_pcd.sum()={np.sum(partial_pcd, axis=1)}')
+            #     numpy.seterr(all='print')
+            #     partial_pcd = partial_pcd / (var * 2)  # (var * 2) (1040*2)
 
             # Move the mesh so that it matches the partial point cloud position
             # (the [0, 0, 1] is to compensate for the fact that the partial pc is in the camera frame)

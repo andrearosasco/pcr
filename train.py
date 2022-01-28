@@ -20,7 +20,7 @@ import pytorch_lightning as pl
 import wandb
 
 if __name__ == '__main__':
-    make_reproducible(TrainConfig.seed)
+    # make_reproducible(TrainConfig.seed)
 
     model = Model(ModelConfig)
 
@@ -53,7 +53,7 @@ if __name__ == '__main__':
                          logger=loggers,
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
-                         num_sanity_val_steps=0,
+                         num_sanity_val_steps=2,
                          callbacks=[
                                     SplitProgressBar(),
                                     checkpoint_callback],

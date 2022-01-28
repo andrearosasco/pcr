@@ -27,6 +27,8 @@ import open3d as o3d
 import pytorch_lightning as pl
 import wandb
 
+# import tensorrt
+
 
 class PCRNetwork(pl.LightningModule, ABC):
 
@@ -49,6 +51,8 @@ class PCRNetwork(pl.LightningModule, ABC):
 
         self.training_set, self.valid_set = None, None
 
+        self.rt_setup = False
+
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
     #         nn.init.constant_(m.bias, 0)
@@ -70,8 +74,9 @@ class PCRNetwork(pl.LightningModule, ABC):
                         drop_last=True,
                         num_workers=TrainConfig.num_workers,
                         pin_memory=True,
-                        worker_init_fn=get_init_fn(TrainConfig.seed),
-                        generator=get_generator(TrainConfig.seed))
+                        # worker_init_fn=get_init_fn(TrainConfig.seed),
+                        # generator=get_generator(TrainConfig.seed)
+                        )
 
         return dl
 
@@ -85,9 +90,18 @@ class PCRNetwork(pl.LightningModule, ABC):
             pin_memory=True)
 
     def forward(self, partial, object_id=None, step=0.01):
+        if not self.rt_setup:
+            self.rt_setup = True
+            x = torch.ones((1, 2024, 3)).cuda()
+        #     # self.backbone_tr = torch2trt(self.backbone, [x], use_onnx=True)
+            torch.onnx.export(self.backbone, x, 'pcr.onnx', input_names=['input'], output_names=['output'],
+                             )
+            # y = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
+            # self.sdf_tr = torch2trt(self.sdf, [y])
+
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
 
-        fast_weights, _ = self.backbone(partial)
+        fast_weights, _ = self.backbone_tr(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
         return samples[prediction.squeeze(-1) > 0.5]
@@ -136,8 +150,6 @@ class PCRNetwork(pl.LightningModule, ABC):
         pred, trgt = torch.sigmoid(output['out']).detach().cpu(), output['target'].unsqueeze(-1).int().detach().cpu()
 
         # This log the metrics on the current batch and accumulate it in the average
-        print(self.avg_loss(output['loss'].detach().cpu()))
-        exit()
         self.log('train/accuracy', self.accuracy(pred, trgt))
         self.log('train/precision', self.precision_(pred, trgt))
         self.log('train/recall', self.recall(pred, trgt))
@@ -211,6 +223,8 @@ class PCRNetwork(pl.LightningModule, ABC):
         self.log('valid/loss', self.avg_loss.compute())
 
         idxs = [np.random.randint(0, len(output)), -1]
+        print(f'idxs={idxs}')
+        print(f'len(output)={len(output)}')
 
         for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
@@ -248,10 +262,6 @@ class PCRNetwork(pl.LightningModule, ABC):
 
             # TODO Fix partial and Add colors
             if EvalConfig.wandb:
-                pc = PointCloud()
-                pc.points = Vector3dVector(partial)
-                o3d.visualization.draw_geometries([mesh, pc], window_name="Partial")
-
                 self.trainer.logger.experiment[0].log(
                     {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
                 self.trainer.logger.experiment[0].log(

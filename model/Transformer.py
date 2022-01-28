@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from timm.models.layers import DropPath, trunc_normal_
+
+from utils.misc import onnx_cdists
 from .dgcnn_group import DGCNN_Grouper
 
 
@@ -11,7 +13,8 @@ def get_knn_index(coor_q, coor_k=None):
     num_points_k = coor_k.size(2)
 
     with torch.no_grad():
-        dist = torch.cdist(coor_k.transpose(1, 2), coor_q.transpose(1, 2))
+        # TODO use onnx_cdists just to export to onnx, otherwise use torch.cdist
+        dist = onnx_cdists(coor_k.transpose(1, 2), coor_q.transpose(1, 2))
         _, idx = torch.topk(dist, dim=1, k=8, largest=False)
 
         idx_base = torch.arange(0, batch_size, device=coor_q.device).view(-1, 1, 1) * num_points_k
@@ -69,7 +72,7 @@ class Attention(nn.Module):
 
     def forward(self, x):
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, torch.div(C, self.num_heads, rounding_mode='trunc')).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale

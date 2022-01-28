@@ -15,13 +15,14 @@ from sklearn.cluster import DBSCAN
 import open3d as o3d
 
 from configs import ModelConfig
-from main import HyperNetwork
+from model import PCRNetwork
 from utils.input import RealSense
 from utils.misc import create_3d_grid
 
-model = HyperNetwork.load_from_checkpoint('../checkpoint/best', config=ModelConfig)
+model = PCRNetwork.load_from_checkpoint('./checkpoint/absolute_best', config=ModelConfig)
 model = model.to('cuda')
 model.eval()
+
 
 vis = Visualizer()
 vis.create_window('Pose Estimation')

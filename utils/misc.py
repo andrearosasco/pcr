@@ -25,10 +25,14 @@ from cmath import sin
 from math import ceil, cos, sin
 import open3d as o3d
 
+def onnx_minimum(x1, x2):
+    x1[x1 > x2] = x2[x2 < x1]
+    return x1
 
 def fp_sampling(points, num):
     batch_size = points.shape[0]
-    D = cdist(points, points)
+    # TODO use onnx_cdists just to export to onnx, otherwise use torch.cdist
+    D = onnx_cdists(points, points)
     # By default, takes the first point in the list to be the
     # first point in the permutation, but could be random
     res = torch.zeros((batch_size, num), dtype=torch.int32, device=points.device)
@@ -36,7 +40,7 @@ def fp_sampling(points, num):
     for i in range(1, num):
         idx = torch.argmax(ds, dim=1)
         res[:, i] = idx
-        ds = torch.minimum(ds, D[torch.arange(batch_size), idx, :])
+        ds = onnx_minimum(ds, D[torch.arange(batch_size), idx, :])
 
     return res
 
@@ -171,3 +175,15 @@ def project_pc(rgb, points):
     return rgb
 
 
+# As soon as pytorch supports cdist onnx, throw this away and use that
+def onnx_cdists(a, b):
+    """ Custom cdists function for ONNX export since neither cdists nor
+    linalg.norm is currently support by the current PyTorch version 1.10.
+    """
+    a = a.unsqueeze(2)  # add columns dimension and repeat along it
+    a = a.repeat(1, 1, b.shape[1], 1)
+    b = b.unsqueeze(1)  # add rows dimension and repeat along it
+    b = b.repeat(1, a.shape[1], 1, 1)
+
+    res = (a - b).pow(2).sum(-1).sqrt()
+    return res
