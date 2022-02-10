@@ -1,11 +1,3 @@
-
-from scipy.spatial.transform import Rotation as R
-from torch import cdist
-import open3d as o3d
-
-import tensorrt
-
-
 import torch
 from configs import server_config
 from model import PCRNetwork
@@ -17,4 +9,4 @@ model.cuda()
 model.eval()
 
 x = torch.ones((1, 2024, 3)).cuda()
-torch.onnx.export(model.backbone, x, 'pcr.onnx', input_names=['input'], output_names=['output'], opset_version=11)
+torch.onnx.export(model.backbone, x, 'pcr.onnx', input_names=['input'], output_names=['features'] + [f'param{i}' for i in range(12)], opset_version=11)

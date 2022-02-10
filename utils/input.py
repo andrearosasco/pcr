@@ -1,7 +1,7 @@
 import os
 import cv2
 import pyrealsense2 as rs
-import cv2
+
 import numpy as np
 import open3d as o3d
 from PIL import Image

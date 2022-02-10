@@ -14,7 +14,7 @@ from open3d.cpu.pybind.visualization import Visualizer, draw_geometries
 from sklearn.cluster import DBSCAN
 import open3d as o3d
 
-from configs import ModelConfig
+from configs import ModelConfig, TrainConfig
 from model import PCRNetwork
 from utils.input import RealSense
 from utils.misc import create_3d_grid
@@ -77,11 +77,11 @@ while True:
     seg_pcd.points = Vector3dVector(pc)
     seg_pcd.paint_uniform_color([0, 0, 1])
 
-    if pc.shape[0] > 2024:
-        idx = np.random.choice(pc.shape[0], (2024), replace=False)
+    if pc.shape[0] > 2048:
+        idx = np.random.choice(pc.shape[0], (2048), replace=False)
         pc = pc[idx]
     else:
-        diff = 2024 - pc.shape[0]
+        diff = 2048 - pc.shape[0]
         partial_pcd = np.vstack((pc, np.zeros([diff, 3])))  # TODO nooooooo
 
     partial = torch.FloatTensor(pc)  # Must be 1, 2024, 3
@@ -102,11 +102,13 @@ while True:
 
     # Inference
     partial = torch.FloatTensor(partial).unsqueeze(0).to(device)
-    prediction = model(partial, step=0.01)  # TODO step SHOULD ME 0.01
+
+    samples = create_3d_grid(batch_size=partial.shape[0], step=0.01).to(TrainConfig.device)  # TODO we create grid two times...
+
+    fast_weights, _ = model.backbone(partial)  # TODO step SHOULD ME 0.01
+    prediction = torch.sigmoid(model.sdf(samples, fast_weights))
 
     prediction = prediction.squeeze(0).squeeze(-1).detach().cpu().numpy()
-
-    samples = create_3d_grid(batch_size=partial.shape[0], step=0.01)  # TODO we create grid two times...
     samples = samples.squeeze(0).detach().cpu().numpy()
 
     selected = samples[prediction > 0.5]

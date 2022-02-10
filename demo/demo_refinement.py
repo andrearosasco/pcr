@@ -1,9 +1,9 @@
+import numpy as np
+from open3d import visualization
+from open3d.cpu.pybind import camera
 import copy
 import time
 
-import onnx
-from open3d import visualization
-# from polygraphy.backend.trt import EngineFromBytes, TrtRunner
 from sklearn.cluster import DBSCAN
 from torch import cdist
 from torch.cuda.amp import autocast
@@ -11,16 +11,11 @@ from torch.nn import BCEWithLogitsLoss
 from torch.optim import SGD, Adam
 
 from configs import ModelConfig, TrainConfig
-from delete2 import Infer
 from model import PCRNetwork
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
-
-from production.tiny_tensor_rt import BackBone
-from utils.reproducibility import make_reproducible
-
 try:
     from open3d.cuda.pybind.geometry import PointCloud
     from open3d.cuda.pybind.utility import Vector3dVector
@@ -34,7 +29,11 @@ import torch
 import open3d as o3d
 from utils.input import RealSense
 from utils.misc import create_3d_grid, check_mesh_contains
-import onnxruntime as ort
+
+
+# Move the view and take a depth image
+viewer = visualization.Visualizer()
+
 
 #####################################################
 ########## Output/Input Space Boundaries ############
@@ -48,27 +47,15 @@ line_set = o3d.geometry.LineSet()
 line_set.points = o3d.utility.Vector3dVector(points)
 line_set.lines = o3d.utility.Vector2iVector(lines)
 
-make_reproducible(1)
-
 #####################################################
 ############# Model and Camera Setup ################
 #####################################################
-model = PCRNetwork.load_from_checkpoint('checkpoint/final', config=ModelConfig)
-
+model = PCRNetwork.load_from_checkpoint('checkpoint/absolute_best', config=ModelConfig)
 model = model.to('cuda')
 model.eval()
 
-# backbone = ort.InferenceSession('pcr.onnx')
-
-# backbone = BackBone()
-backbone = Infer()
-# with open('assets/production/pcr.engine', 'rb') as f:
-#     serialized_engine = f.read()
-#     engine = EngineFromBytes(serialized_engine)
-
-
 # camera = RealSense()
-viewer = visualization.Visualizer()
+
 #####################################################
 ############# Point Cloud Processing ################
 #####################################################
@@ -77,8 +64,7 @@ viewer = visualization.Visualizer()
 # depth = np.array(Image.open(f'000299-depth.png'), dtype=np.float32)
 # _, depth = camera.read()
 read_time, seg_time, inf_time, ref_time = 0, 0, 0, 0
-it = 1
-for i in range(it):
+for i in range(1):
 
     start = time.time()
     depth = np.array(Image.open(f'assets/depth_test.png'), dtype=np.uint16)
@@ -102,16 +88,11 @@ for i in range(it):
     segmented_pc = downsampled_pc[clustering.labels_ == close]
 
     ### Randomly choose 2024 points (model input size)
-    if segmented_pc.shape[0] > 2024:
-        idx = np.random.choice(segmented_pc.shape[0], (2024), replace=False)
+    if segmented_pc.shape[0] > 2048:
+        idx = np.random.choice(segmented_pc.shape[0], (2048), replace=False)
         size_pc = segmented_pc[idx]
     else:
-        print('Warning: Partial Point Cloud padded in zero')
-        diff = 2024 - segmented_pc.shape[0]
-        pad = np.zeros([diff, 3])
-        pad[:] = segmented_pc[0]
-        size_pc = np.vstack((segmented_pc, pad))
-        # size_pc = segmented_pc
+        size_pc = segmented_pc
     seg_time += time.time() - start
 
     ### Normalize Point Cloud
@@ -136,25 +117,9 @@ for i in range(it):
     # samples = create_3d_grid(batch_size=model_input.shape[0], step=0.01).to(TrainConfig.device)
     # samples = torch.randn(1, 1024, 3).to(TrainConfig.device)
     # with autocast():
-
-    # with torch.no_grad():
-    #     fast_weights, _ = model.backbone(model_input) # TODO questa riga funzione ma nel codice di backbone, fast_weights è il secondo argomento
-
-    fast_weights = backbone(normalized_pc)
-
-    # outputs = backbone.run(None, {'input': np.expand_dims(normalized_pc, 0).astype(np.float32)})
-    # *weights, _ = outputs
-    # weights = [torch.tensor(w).cuda() for w in weights]
-    # fast_weights = [[weights[i], weights[i + 1], weights[i + 2]] for i in range(0, 12, 3)]
-
-    # with TrtRunner(engine) as runner:
-    #     outputs = runner.infer(feed_dict={'input': normalized_pc})
-    # res = list(outputs.values())
-    # _, *weights = res
-    # weights = [torch.tensor(w).cuda() for w in weights]
-    # fast_weights = [[weights[i], weights[i + 1], weights[i + 2]] for i in range(0, 12, 3)]
-
-        # prediction = torch.sigmoid(model.sdf(samples, fast_weights))
+    with torch.no_grad():
+        fast_weights, _ = model.backbone(model_input)
+    #     prediction = torch.sigmoid(model.sdf(samples, fast_weights))
     #
     # prediction = prediction.squeeze(0).squeeze(-1).detach().cpu().numpy()
 
@@ -175,9 +140,9 @@ for i in range(it):
 
     c1, c2, c3, c4 = 1, 0, 0, 0 #1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
     new_points = [] # refined_pred.detach().clone()
-    for step in range(1):
+    for step in range(20):
         results = model.sdf(refined_pred, fast_weights)
-        new_points += [refined_pred.detach().clone()[:, (torch.sigmoid(results).squeeze() >= 0.4) * (torch.sigmoid(results).squeeze() <= 1), :]]
+        new_points += [refined_pred.detach().clone()[:, torch.sigmoid(results).squeeze() >= 0.4, :]]
 
         gt = torch.ones_like(results[..., 0], dtype=torch.float32)
         gt[:, :] = 1
@@ -216,38 +181,25 @@ for i in range(it):
     part_pc.paint_uniform_color([0, 1, 0])
 
 
-print(f'read time - {read_time / it}')
-print(f'seg time - {seg_time / it}')
-print(f'inf time - {inf_time / it}')
-print(f'ref time - {ref_time / it}')
-print(f'tot time - {(read_time + seg_time + inf_time + ref_time) / it}')
+    viewer.create_window(width=1920, height=1080, visible=True)
+    viewer.clear_geometries()
 
+    viewer.add_geometry(pred_pc)
+    viewer.add_geometry(part_pc)
 
-viewer.create_window(width=1920, height=1080, visible=True)
-viewer.clear_geometries()
+    control = viewer.get_view_control()
+    control.set_front(np.array([0.3, 0.2, -0.3]))
+    control.set_lookat(np.array([0, 0, 0]))
+    control.set_up(np.array([0, 1, 0]))
+    control.set_zoom(1)
 
-viewer.add_geometry(pred_pc)
-viewer.add_geometry(part_pc)
-viewer.add_geometry(line_set)
+    # viewer.run()
 
-control = viewer.get_view_control()
-control.set_front(np.array([0.2, 0.1, 0.05]))
-control.set_lookat(np.array([0, 0, 0]))
-control.set_up(np.array([0, 1, 0]))
-control.set_zoom(1)
+    draw_geometries([part_pc])
+    draw_geometries([pred_pc, part_pc])
 
-viewer.run()
+    # depth = viewer.capture_screen_image(f'test{step}.png', True)
 
-# depth = viewer.capture_screen_image(f'new_method10.png', True)
-
-viewer.remove_geometry(pred_pc)
-viewer.remove_geometry(part_pc)
-viewer.destroy_window()
-
-centers = o3d.geometry.LineSet()
-centers.points = o3d.utility.Vector3dVector([np.mean(normalized_pc, axis=0).tolist(), mean.tolist(),
-                                             np.mean(selected, axis=0).tolist(),
-                                             np.mean(np.array(pred_pc.points), axis=0).tolist()])
-centers.lines = o3d.utility.Vector2iVector([[0, 1], [2, 3]])
-#
-# o3d.visualization.draw_geometries([pred_pc, part_pc, line_set])
+    viewer.remove_geometry(pred_pc)
+    viewer.remove_geometry(part_pc)
+    viewer.destroy_window()

@@ -27,7 +27,6 @@ import open3d as o3d
 import pytorch_lightning as pl
 import wandb
 
-# import tensorrt
 
 
 class PCRNetwork(pl.LightningModule, ABC):
@@ -90,18 +89,18 @@ class PCRNetwork(pl.LightningModule, ABC):
             pin_memory=True)
 
     def forward(self, partial, object_id=None, step=0.01):
-        if not self.rt_setup:
-            self.rt_setup = True
-            x = torch.ones((1, 2024, 3)).cuda()
-        #     # self.backbone_tr = torch2trt(self.backbone, [x], use_onnx=True)
-            torch.onnx.export(self.backbone, x, 'pcr.onnx', input_names=['input'], output_names=['output'],
-                             )
+        # if not self.rt_setup:
+        #     self.rt_setup = True
+        #     x = torch.ones((1, 2024, 3)).cuda()
+        # #     # self.backbone_tr = torch2trt(self.backbone, [x], use_onnx=True)
+        #     torch.onnx.export(self.backbone, x, 'pcr.onnx', input_names=['input'], output_names=['output'],
+        #                      )
             # y = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
             # self.sdf_tr = torch2trt(self.sdf, [y])
 
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
 
-        fast_weights, _ = self.backbone_tr(partial)
+        fast_weights, _ = self.backbone(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
 
         return samples[prediction.squeeze(-1) > 0.5]
