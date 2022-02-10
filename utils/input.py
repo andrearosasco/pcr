@@ -116,6 +116,7 @@ class YCBVideoReader:
             'fx': 1077.836, 'fy': 1078.189,
             'cx': 323.7872, 'cy': 279.6921,
         }
+        self.jump_n_frames = 1000
 
     def get_xyz_by_name(self, name):
         path = os.path.join(self.root_path, "models")
@@ -124,23 +125,16 @@ class YCBVideoReader:
         points = np.genfromtxt(obj_path, delimiter=' ')
         return points
 
-    def get_mesh_path_by_id(self, index):
+    def get_mesh_path_by_name(self, name):
         path = os.path.join(self.root_path, "models")
-        models = os.listdir(path)
-        models_dict = {}
-        for elem in models:
-            obj_ind, _ = elem.split('_', maxsplit=1)
-            obj_ind = str(int(obj_ind))
-            models_dict[obj_ind] = elem
-        obj_path = os.path.join(path, models_dict[str(index)])
+        obj_path = os.path.join(path, name)
         obj_path = os.path.join(obj_path, 'textured.obj')
-        # points = np.genfromtxt(obj_path, delimiter=' ')
         return obj_path
 
     def get_frame(self):
 
         # Check if dataset is over
-        if self.video_id > len(self.video_list):
+        if self.video_id >= len(self.video_list):
             return None
 
         # Create right path
@@ -183,7 +177,7 @@ class YCBVideoReader:
             intrinsics = self.intrinsics_2
 
         # Next frame (or next video)
-        self.frame_id += 1
+        self.frame_id += self.jump_n_frames
         str_id = str(self.frame_id)
         str_id = '0' * (6 - len(str_id)) + str_id
         frame_path = os.path.join(video_path, str_id)

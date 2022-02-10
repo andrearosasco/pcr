@@ -3,14 +3,13 @@ import numpy as np
 import sys
 sys.argv[0] = 'server_config'
 from configs import DataConfig
-from datasets.BoxNetPOVRemoval import BoxNet  # NOTE it cant work with BoxNetPOVDepth
+from datasets.BoxNetPOVDepth import BoxNet  # NOTE it cant work with BoxNetPOVDepth
 from utils.pose_generator import PoseGenerator
 from utils.pointcloud_reconstructor import PointCloudReconstructor
-from model import HyperNetwork
+from model import PCRNetwork
 from utils.output import PoseVisualizer
 import msvcrt
 from configs.server_config import ModelConfig
-import tqdm
 
 try:
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
@@ -25,11 +24,12 @@ except ImportError:
 # o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel(0))
 device = "cuda"
 print_time = False
+live = False
 
 if __name__ == "__main__":
 
     # Visualizer
-    test = PoseVisualizer()
+    test = PoseVisualizer(live=live)
 
     # Dataset
     valid_set = BoxNet(DataConfig, 10000)
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     res = 0.01
 
     # Pose generator
-    model = HyperNetwork.load_from_checkpoint('checkpoint/best', config=ModelConfig)
+    model = PCRNetwork.load_from_checkpoint('checkpoint/latest', config=ModelConfig)
     model = model.to(device)
     model.eval()
     generator = PoseGenerator()
@@ -61,16 +61,26 @@ if __name__ == "__main__":
                 print("Reconstruct: {}".format(time.time() - start))
 
             # Refine point cloud
-            start = time.time()
-            complete_pc_aux = reconstructor.refine_point_cloud(complete_pc_aux, fast_weights, n=5, show_loss=False)
-            if print_time:
-                print("Refine: {}".format(time.time() - start))
+            # start = time.time()
+            # complete_pc_aux = reconstructor.refine_point_cloud(complete_pc_aux, fast_weights, n=5, show_loss=False)
+            # if print_time:
+            #     print("Refine: {}".format(time.time() - start))
 
             # start = time.time()  # TODO REMOVE BOTTLENECK
             pc = PointCloud()
             pc.points = Vector3dVector(complete_pc_aux.squeeze(0).detach().cpu())
             complete_pc_aux = pc
             # print("TIME: {}".format(time.time() - start))
+
+            # # TODO START EXPERIMENT
+            # import open3d as o3d
+            # o3d.visualization.draw_geometries([pc])
+            # import pyransac3d as pyrsc
+            # cube = pyrsc.Cuboid()
+            # points = np.array(complete_pc_aux.points)
+            # res = cube.fit(points)
+            # pass
+            # # TODO END EXPERIMENT
 
             # Find poses
             start = time.time()  # 1.5 100 1000
@@ -95,3 +105,6 @@ if __name__ == "__main__":
 
             if print_time:
                 print("LOOP TIME: {}".format(time.time() - start1))
+
+            if not live:
+                break

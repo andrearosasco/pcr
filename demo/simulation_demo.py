@@ -1,10 +1,9 @@
-import msvcrt
 import open3d as o3d
 import numpy as np
 import torch
 from utils.pose_generator import PoseGenerator
-from model import HyperNetwork
-from utils.input import iCubGazebo
+from model import PCRNetwork
+from utils.input import RealSense
 import cv2
 from utils.output import PoseVisualizer
 from configs.server_config import ModelConfig
@@ -27,11 +26,11 @@ device = "cuda"
 if __name__ == "__main__":
 
     test = PoseVisualizer()
-    icub = iCubGazebo()
+    icub = RealSense()
     res = 0.01
 
     # Pose generator
-    model = HyperNetwork.load_from_checkpoint('../checkpoint/from_depth', config=ModelConfig)
+    model = PCRNetwork.load_from_checkpoint('../checkpoint/from_depth', config=ModelConfig)
     model = model.to(device)
     model.eval()
 
@@ -99,8 +98,3 @@ if __name__ == "__main__":
         partial_pc_aux.points = Vector3dVector(partial_points)  # NOTE: not a bottleneck because only 2048 points
 
         test.run(partial_pc_aux, complete_pc_aux, poses, mean, var)  # just pass partial points
-
-        # If a key is pressed, break
-        if msvcrt.kbhit():
-            print(msvcrt.getch())
-            break
