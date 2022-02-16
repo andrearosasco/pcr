@@ -9,82 +9,10 @@ import threading
 
 import tqdm
 from polygraphy.common import TensorMetadata
-from polygraphy.comparator import DataLoader as PolyDataLoader
-from tensorrt import IInt8EntropyCalibrator
-from torch.utils.data import DataLoader as TorchDataLoader
 
-from configs import DataConfig
-from datasets.BoxNetPOVDepth import BoxNet
 
 import tensorrt as trt
-
-
-class EntropyCalibrator(IInt8EntropyCalibrator):
-    def __init__(self, input_layers, stream):
-        super().__init__()
-        self.input_layers = input_layers
-        self.stream = stream
-
-        # self.d_input = cuda.mem_alloc(self.stream.calibration_data.nbytes)
-        stream.reset()
-
-
-    def get_batch_size(self):
-        return self.stream.batch_size
-
-    def get_batch(self, names):
-        try:
-            # Assume self.batches is a generator that provides batch data.
-            data = self.stream.next_batch()
-            # Assume that self.device_input is a device buffer allocated by the constructor.
-            cuda.memcpy_htod(self.device_input, data)
-            return [int(self.device_input)]
-        except StopIteration:
-            # When we're out of batches, we return either [] or None.
-            # This signals to TensorRT that there is no calibration data remaining.
-            return None
-
-
-    def read_calibration_cache(self, length):
-        return None
-
-
-    def write_calibration_cache(self, ptr, size):
-        cache = ctypes.c_char_p(int(ptr))
-        with open('calibration_cache.bin', 'wb') as f:
-            f.write(cache.value)
-        return None
-
-
-class ImageBatchStream():
-    def __init__(self):
-        self.batch_size = 16
-        self.batch = 0
-        training_set = BoxNet(DataConfig, 128)
-        self.dl = TorchDataLoader(training_set,
-                             batch_size=16,
-                             shuffle=True,
-                             drop_last=True,
-                             num_workers=4,
-                             pin_memory=True,
-                             )
-
-        self.calibration_data = np.zeros((16, 3*2024), dtype=np.float32)
-        self.dl_it = iter(self.dl)
-
-    def reset(self):
-        self.dl_it = iter(self.dl)
-        self.batch = 0
-
-    def next_batch(self):
-        pc = next(self.dl_it).numpy()
-        pc = pc.resize(pc.shape[0], -1)
-
-        for i in range(pc.shape[0]):
-            self.calibration_data[i] = pc[i]
-
-        self.batch += 1
-        return pc
+from polygraphy.comparator import DataLoader
 
 
 class HostDeviceMem(object):
@@ -116,7 +44,7 @@ class TRTInference:
         elif trt_engine_path.endswith('onnx'):
             print("Building engine and saving it as 'out.trt' for next loadings...")
             engine = self.build_engine_onnx(trt_engine_path, TRT_LOGGER)
-            with open('int8_pcr.engine', 'wb') as f:
+            with open('pcr.engine', 'wb') as f:
                 f.write(engine.serialize())
         else:
             raise NameError("The provided file is not an onnx or an engine")
@@ -158,8 +86,7 @@ class TRTInference:
         network = builder.create_network(1)  # EXPLICIT_BATH is 1
         config = builder.create_builder_config()
 
-        batchstream = ImageBatchStream()
-        Int8_calibrator = EntropyCalibrator(["input_node_name"], batchstream)
+        config.clear_flag(trt.BuilderFlag.TF32)
 
         # config.set_flag(trt.BuilderFlag.INT8)
         # config.int8_calibrator = Int8_calibrator
@@ -226,7 +153,7 @@ class BackBone:
         yolo_port = 6000
         it = 10000
 
-        engine = TRTInference('assets/production/pcr_polygraphy.engine')
+        engine = TRTInference('pcr.engine')
 
         yolo_thread = myThread(engine.infer, yolo_port)
         yolo_thread.start()
@@ -248,17 +175,17 @@ class BackBone:
 
 if __name__ == '__main__':
     yolo_port = 6000
-    it = 10000
-
-    engine = TRTInference('assets/production/pcr_polygraphy.engine')
-
+    it = 100
+    #
+    engine = TRTInference('pcr.onnx')
+    #
     yolo_thread = myThread(engine.infer, yolo_port)
     yolo_thread.start()
 
     yolo_client = Client(('localhost', yolo_port), authkey=b'secret password')
     yolo_listener = Listener(('localhost', yolo_port + 1), authkey=b'secret password').accept()
 
-    data_loader = PolyDataLoader(iterations=it,
+    data_loader = DataLoader(iterations=it,
                              val_range=(-0.5, 0.5),
                              input_metadata=TensorMetadata.from_feed_dict(
                                  {'input': np.zeros([1, 2024, 3], dtype=np.float32)}))
@@ -270,6 +197,13 @@ if __name__ == '__main__':
         while not yolo_listener.poll():
             continue
         res = yolo_listener.recv()
-
-    print((time.time() - start) / it)
-    print(1 / ((time.time() - start) / it))
+    # import onnxruntime as ort
+    #
+    # backbone = ort.InferenceSession('pcr.onnx')
+    #
+    # start = time.time()
+    # for x in tqdm.tqdm(data_loader):
+    #     outputs = backbone.run(None, x)
+    #
+    # print((time.time() - start) / it)
+    # print(1 / ((time.time() - start) / it))
