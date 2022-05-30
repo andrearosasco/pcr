@@ -33,7 +33,7 @@ class DGCNN_Grouper(nn.Module):
                                     )
 
     @staticmethod
-    def fps_downsample(coor, x, num_group):
+    def fps_downsample(coor, x, num_group: int):
         xyz = coor.transpose(1, 2).contiguous()  # b, n, 3
         fps_idx = fp_sampling(xyz, num_group)
 
@@ -60,7 +60,7 @@ class DGCNN_Grouper(nn.Module):
         with torch.no_grad():
             # TODO use onnx_cdists just to export to onnx, otherwise use torch.cdist
             dist = onnx_cdists(coor_k.transpose(1, 2), coor_q.transpose(1, 2))
-            _, idx = torch.topk(dist, dim=1, k=16, largest=False)
+            _, idx = torch.topk(-dist, dim=1, k=16)
 
             # assert idx.shape[1] == k
             idx_base = torch.arange(0, batch_size, device=x_q.device).view(-1, 1, 1) * num_points_k
@@ -80,26 +80,26 @@ class DGCNN_Grouper(nn.Module):
 
         # bs 3 N(128)   bs C(224)128 N(128)
         coor = x
-        f = self.input_trans(x)  # out: B 8 2048
+        f1 = self.input_trans(x)  # out: B 8 2048
 
-        f = self.get_graph_feature(coor, f, coor, f)
+        f = self.get_graph_feature(coor, f1, coor, f1)
         f = self.layer1(f)
-        f = f.max(dim=-1, keepdim=False)[0]
+        f2 = f.max(dim=-1, keepdim=False)[0]
 
-        coor_q, f_q = self.fps_downsample(coor, f, 512)
-        f = self.get_graph_feature(coor_q, f_q, coor, f)
+        coor_q, f_q = self.fps_downsample(coor, f2, 512)
+        f = self.get_graph_feature(coor_q, f_q, coor, f2)
         f = self.layer2(f)
-        f = f.max(dim=-1, keepdim=False)[0]
+        f3 = f.max(dim=-1, keepdim=False)[0]
         coor = coor_q
 
-        f = self.get_graph_feature(coor, f, coor, f)
+        f = self.get_graph_feature(coor, f3, coor, f3)
         f = self.layer3(f)
-        f = f.max(dim=-1, keepdim=False)[0]
+        f4 = f.max(dim=-1, keepdim=False)[0]
 
-        coor_q, f_q = self.fps_downsample(coor, f, 128)
-        f = self.get_graph_feature(coor_q, f_q, coor, f)
+        coor_q, f_q = self.fps_downsample(coor, f4, 128)
+        f = self.get_graph_feature(coor_q, f_q, coor, f4)
         f = self.layer4(f)
-        f = f.max(dim=-1, keepdim=False)[0]
+        f5 = f.max(dim=-1, keepdim=False)[0]
         coor = coor_q
 
-        return coor, f
+        return coor, f5

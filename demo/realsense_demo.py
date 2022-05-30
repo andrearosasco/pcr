@@ -1,7 +1,9 @@
 import copy
 import time
 
+import numpy
 import onnx
+import tqdm
 from open3d import visualization
 # from polygraphy.backend.trt import EngineFromBytes, TrtRunner
 from sklearn.cluster import DBSCAN
@@ -11,7 +13,7 @@ from torch.nn import BCEWithLogitsLoss
 from torch.optim import SGD, Adam
 
 from configs import ModelConfig, TrainConfig
-from delete2 import Infer
+from production.inference import Infer, Refiner
 from model import PCRNetwork
 from pathlib import Path
 
@@ -61,7 +63,8 @@ model.eval()
 # backbone = ort.InferenceSession('pcr.onnx')
 
 # backbone = BackBone()
-backbone = Infer()
+backbone = Infer('pcr.engine')
+refiner = Refiner('refiner.engine')
 # with open('assets/production/pcr.engine', 'rb') as f:
 #     serialized_engine = f.read()
 #     engine = EngineFromBytes(serialized_engine)
@@ -77,48 +80,50 @@ viewer = visualization.Visualizer()
 # depth = np.array(Image.open(f'000299-depth.png'), dtype=np.float32)
 # _, depth = camera.read()
 read_time, seg_time, inf_time, ref_time = 0, 0, 0, 0
-it = 1
-for i in range(it):
 
-    start = time.time()
-    depth = np.array(Image.open(f'assets/depth_test.png'), dtype=np.uint16)
-    read_time += (time.time() - start)
+start = time.time()
+depth = np.array(Image.open(f'assets/depth_test.png'), dtype=np.uint16)
+read_time += (time.time() - start)
 
-    start = time.time()
-    ### Cut the depth at a 2m distance
-    depth[depth > 2000] = 0
-    full_pc = RealSense.pointcloud(depth)
+start = time.time()
+### Cut the depth at a 2m distance
+depth[depth > 2000] = 0
+full_pc = RealSense.pointcloud(depth)
 
-    ### Randomly subsample 5% of the total points (to ease DBSCAN processing)
-    if i == 0:
-        old_idx = np.random.choice(full_pc.shape[0], (int(full_pc.shape[0] * 0.05)), replace=False)
-    idx = old_idx
-    idx = np.random.choice(full_pc.shape[0], (int(full_pc.shape[0] * 0.05)), replace=False)
-    downsampled_pc = full_pc[idx]
+### Randomly subsample 5% of the total points (to ease DBSCAN processing)
+# if i == 0:
+#     old_idx = np.random.choice(full_pc.shape[0], (int(full_pc.shape[0] * 0.05)), replace=False)
+# idx = old_idx
+idx = np.random.choice(full_pc.shape[0], (int(full_pc.shape[0] * 0.05)), replace=False)
+downsampled_pc = full_pc[idx]
 
-    ### Apply DBSCAN and keep only the closest cluster to the camera
-    clustering = DBSCAN(eps=0.1, min_samples=10).fit(downsampled_pc)
-    close = clustering.labels_[downsampled_pc.argmax(axis=0)[2]]
-    segmented_pc = downsampled_pc[clustering.labels_ == close]
+### Apply DBSCAN and keep only the closest cluster to the camera
+clustering = DBSCAN(eps=0.1, min_samples=10).fit(downsampled_pc)
+close = clustering.labels_[downsampled_pc.argmax(axis=0)[2]]
+segmented_pc = downsampled_pc[clustering.labels_ == close]
 
-    ### Randomly choose 2024 points (model input size)
-    if segmented_pc.shape[0] > 2024:
-        idx = np.random.choice(segmented_pc.shape[0], (2024), replace=False)
-        size_pc = segmented_pc[idx]
-    else:
-        print('Warning: Partial Point Cloud padded in zero')
-        diff = 2024 - segmented_pc.shape[0]
-        pad = np.zeros([diff, 3])
-        pad[:] = segmented_pc[0]
-        size_pc = np.vstack((segmented_pc, pad))
-        # size_pc = segmented_pc
-    seg_time += time.time() - start
+### Randomly choose 2024 points (model input size)
+if segmented_pc.shape[0] > 2024:
+    idx = np.random.choice(segmented_pc.shape[0], (2024), replace=False)
+    size_pc = segmented_pc[idx]
+else:
+    print('Warning: Partial Point Cloud padded')
+    diff = 2024 - segmented_pc.shape[0]
+    pad = np.zeros([diff, 3])
+    pad[:] = segmented_pc[0]
+    size_pc = np.vstack((segmented_pc, pad))
+    # size_pc = segmented_pc
+seg_time += time.time() - start
 
-    ### Normalize Point Cloud
-    mean = np.mean(size_pc, axis=0)
-    var = np.sqrt(np.max(np.sum((size_pc - mean) ** 2, axis=1)))
-    normalized_pc = (size_pc - mean) / (var * 2)
-    normalized_pc[..., -1] = -normalized_pc[..., -1]
+### Normalize Point Cloud
+mean = np.mean(size_pc, axis=0)
+var = np.sqrt(np.max(np.sum((size_pc - mean) ** 2, axis=1)))
+normalized_pc = (size_pc - mean) / (var * 2)
+normalized_pc[..., -1] = -normalized_pc[..., -1]
+
+it = 1000
+for i in tqdm.tqdm(range(it)):
+
 
     # TODO START REMOVE DEBUG
     # partial_pcd = PointCloud()
@@ -141,6 +146,7 @@ for i in range(it):
     #     fast_weights, _ = model.backbone(model_input) # TODO questa riga funzione ma nel codice di backbone, fast_weights è il secondo argomento
 
     fast_weights = backbone(normalized_pc)
+    # prediction = torch.sigmoid(model.sdf(samples, fast_weights))
 
     # outputs = backbone.run(None, {'input': np.expand_dims(normalized_pc, 0).astype(np.float32)})
     # *weights, _ = outputs
@@ -164,20 +170,26 @@ for i in range(it):
     ################## Refinement ####################
     ##################################################
     start = time.time()
-    # refined_pred = torch.tensor(samples[:, prediction >= 0.5, :].cpu().detach().numpy(), device=TrainConfig.device,
+    # refined_pred = torch.tensor(samples[:, prediction.squeeze() >= 0.5, :].cpu().detach().numpy(), device=TrainConfig.device,
     #                             requires_grad=True)
-    refined_pred = torch.tensor(torch.randn(1, 100000, 3).cpu().detach().numpy() * 1, device=TrainConfig.device,
+    refined_pred = torch.tensor(torch.randn(1, 10000, 3).cpu().detach().numpy() * 1, device=TrainConfig.device,
                                 requires_grad=True)
-    refined_pred_0 = copy.deepcopy(refined_pred.detach())
+    # refined_pred_0 = copy.deepcopy(refined_pred.detach())
 
     loss_function = BCEWithLogitsLoss(reduction='mean')
     optim = Adam([refined_pred], lr=0.1)
 
+    # complete = []
+    # selected = refined_pred.detach().cpu().numpy()
+    # for _ in range(10):
+    #     selected, idx = refiner(selected, fast_weights)
+    #     complete.append(selected.reshape(1, 10000, 3)[:, idx, :])
+
     c1, c2, c3, c4 = 1, 0, 0, 0 #1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
     new_points = [] # refined_pred.detach().clone()
-    for step in range(1):
+    for step in range(20):
         results = model.sdf(refined_pred, fast_weights)
-        new_points += [refined_pred.detach().clone()[:, (torch.sigmoid(results).squeeze() >= 0.4) * (torch.sigmoid(results).squeeze() <= 1), :]]
+        new_points += [refined_pred.detach().clone()[:, (torch.sigmoid(results).squeeze() >= 0.5) * (torch.sigmoid(results).squeeze() <= 1), :]]
 
         gt = torch.ones_like(results[..., 0], dtype=torch.float32)
         gt[:, :] = 1
@@ -200,6 +212,7 @@ for i in range(it):
 
         # refined_pred = torch.tensor(refined_pred.cpu().detach().numpy(), device=TrainConfig.device,
         #                             requires_grad=True)
+    # selected = numpy.concatenate(complete, axis=1)
 
     ref_time += time.time() - start
     ##################################################
@@ -216,10 +229,10 @@ for i in range(it):
     part_pc.paint_uniform_color([0, 1, 0])
 
 
-print(f'read time - {read_time / it}')
-print(f'seg time - {seg_time / it}')
-print(f'inf time - {inf_time / it}')
-print(f'ref time - {ref_time / it}')
+print(f'read time - {read_time / it} s -> {1 / (read_time / it)} fps')
+print(f'seg time - {seg_time / it} s -> {1 / (seg_time / it)} fps')
+print(f'inf time - {inf_time / it} s -> {1 / (inf_time / it)} fps')
+print(f'ref time - {ref_time / it} s -> {1 / (ref_time / it)} fps')
 print(f'tot time - {(read_time + seg_time + inf_time + ref_time) / it}')
 
 

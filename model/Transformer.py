@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import typing
 from timm.models.layers import DropPath, trunc_normal_
 
 from utils.misc import onnx_cdists
@@ -15,7 +16,7 @@ def get_knn_index(coor_q, coor_k=None):
     with torch.no_grad():
         # TODO use onnx_cdists just to export to onnx, otherwise use torch.cdist
         dist = onnx_cdists(coor_k.transpose(1, 2), coor_q.transpose(1, 2))
-        _, idx = torch.topk(dist, dim=1, k=8, largest=False)
+        _, idx = torch.topk(-dist, dim=1, k=8)
 
         idx_base = torch.arange(0, batch_size, device=coor_q.device).view(-1, 1, 1) * num_points_k
         idx = idx + idx_base
@@ -25,7 +26,7 @@ def get_knn_index(coor_q, coor_k=None):
     return idx  # bs*k*np
 
 
-def get_graph_feature(x, knn_index, x_q=None):
+def get_graph_feature(x, knn_index, x_q: typing.Optional[torch.Tensor] = None):
     #  x: bs, np, c, knn_index: bs*k*np
     k = 8
     batch_size, num_points, num_dims = x.size()
@@ -72,7 +73,9 @@ class Attention(nn.Module):
 
     def forward(self, x):
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, torch.div(C, self.num_heads, rounding_mode='trunc')).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, torch.div(C, self.num_heads,
+                                                                     rounding_mode='trunc')).permute(2, 0, 3, 1,
+                                                                                                            4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -146,7 +149,7 @@ class Block(nn.Module):
 
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-    def forward(self, x, knn_index=None):
+    def forward(self, x, knn_index: typing.Optional[torch.Tensor] = None):
         norm_x = self.norm1(x)
         x_1 = self.attn(norm_x)
 

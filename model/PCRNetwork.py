@@ -28,7 +28,6 @@ import pytorch_lightning as pl
 import wandb
 
 
-
 class PCRNetwork(pl.LightningModule, ABC):
 
     def __init__(self, config):

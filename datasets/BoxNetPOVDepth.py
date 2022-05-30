@@ -27,7 +27,7 @@ from utils.misc import sample_point_cloud
 
 
 class BoxNet(data.Dataset):
-    def __init__(self, config, n_samples):
+    def __init__(self, config, n_samples, noise=True):
         #  Backbone Input
         self.partial_points = config.partial_points
 
@@ -44,6 +44,8 @@ class BoxNet(data.Dataset):
         self.cube_dim = {'low': 50, 'high': 600}
         self.camera_dist = {'low': 400, 'high': 1500}
         self.mesh_angle = {'low': 0, 'high': 360}
+
+        self.noise = noise  # Noise in the partial pc [the configuration one is for the sdf input]
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
         # print(random.random())
@@ -160,6 +162,12 @@ class BoxNet(data.Dataset):
         # centered on the origin?
         #
         # normalized[..., 2] = normalized[..., 2] + (-0.5 - min(normalized[..., 2]))
+
+        if self.noise:
+            if random.randint(0, 1) == 1:
+                noise_level = random.randint(1, 10) / 100
+                noise = np.random.rand(int(partial_pcd.shape[0] * noise_level), 3) - 0.5
+                partial_pcd = np.concatenate([partial_pcd, noise], axis=0)
 
         partial_pcd = torch.FloatTensor(partial_pcd)
 

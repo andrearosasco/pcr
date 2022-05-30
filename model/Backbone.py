@@ -71,6 +71,7 @@ class BackBone(nn.Module):
         for layer in self.output:
             fast_weights.append([ly(global_feature) for ly in layer])
 
+        # return fast_weights, global_feature
         return fast_weights, global_feature
 
 

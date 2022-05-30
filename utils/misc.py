@@ -28,7 +28,7 @@ import open3d as o3d
 def onnx_minimum(x1, x2):
     return torch.where(x2 < x1, x2, x1)
 
-def fp_sampling(points, num):
+def fp_sampling(points, num: int):
     batch_size = points.shape[0]
     # TODO use onnx_cdists just to export to onnx, otherwise use torch.cdist
     D = onnx_cdists(points, points)
@@ -157,8 +157,15 @@ def from_depth_to_pc(depth, intrinsics, depth_factor=10000.):
 
 def project_pc(rgb, points):
     k = np.eye(3)
-    k[0, :] = np.array([1066.778, 0, 312.9869])
-    k[1, 1:] = np.array([1067.487, 241.3109])
+    # k[0, :] = np.array([1066.778, 0, 312.9869]) # YCB Video values
+    # k[1, 1:] = np.array([1067.487, 241.3109])
+
+    intrinsics = {'fx': 612.7910766601562, 'fy': 611.8779296875, 'ppx': 321.7364196777344,
+                  'ppy': 245.0658416748047,
+                  'width': 640, 'height': 480}
+
+    k[0, :] = np.array([intrinsics['fx'], 0, intrinsics['ppx']])
+    k[1, 1:] = np.array([intrinsics['fy'], intrinsics['ppy']])
 
     points = np.array(points) * 10000.0
     uv = k @ points.T
@@ -169,9 +176,43 @@ def project_pc(rgb, points):
     uv[0, :] = np.clip(uv[0, :], 0, 639)
     uv[1, :] = np.clip(uv[1, :], 0, 479)
 
-    rgb[uv[1, :], uv[0, :], :] = np.tile((np.array([1, 0, 0]) * 255).astype(int), (uv.shape[1], 1))
+    # rgb[uv[1, :], uv[0, :], :] = np.tile((np.array([1, 0, 0]) * 255).astype(int), (uv.shape[1], 1))
+    rgb[uv[1, :], uv[0, :], :] = ((points - points.min(axis=0)) / (points - points.min(axis=0)).max(axis=0) * 255).astype(int)
 
     return rgb
+
+def pc_to_depth(points):
+    k = np.eye(3)
+    # k[0, :] = np.array([1066.778, 0, 312.9869]) # YCB Video values
+    # k[1, 1:] = np.array([1067.487, 241.3109])
+
+    # Assuming the camera is in 0, 0, 0
+
+    intrinsics = {'fx': 612.7910766601562, 'fy': 611.8779296875, 'ppx': 321.7364196777344,
+                  'ppy': 245.0658416748047,
+                  'width': 640, 'height': 480}
+
+    intrinsics.update((key, intrinsics[key] * 0.4) for key in intrinsics)
+
+    depth = np.zeros([int(intrinsics['width']), int(intrinsics['height'])]).astype(np.float32)
+
+    k[0, :] = np.array([intrinsics['fx'], 0, intrinsics['ppx']])
+    k[1, 1:] = np.array([intrinsics['fy'], intrinsics['ppy']])
+
+    points = np.array(points) * 10000.0
+    uv = k @ points.T
+    uv = uv[0:2] / uv[2, :]
+
+    uv = np.round(uv, 0).astype(int)
+
+    uv[0, :] = np.clip(uv[0, :], 0, intrinsics['width'])
+    uv[1, :] = np.clip(uv[1, :], 0, intrinsics['height'])
+
+    distances = np.sqrt(np.power(points, 2).sum(axis=1))
+    # rgb[uv[1, :], uv[0, :], :] = np.tile((np.array([1, 0, 0]) * 255).astype(int), (uv.shape[1], 1))
+    depth[uv[1, :], uv[0, :]] = distances
+
+    return depth
 
 
 # As soon as pytorch supports cdist onnx, throw this away and use that

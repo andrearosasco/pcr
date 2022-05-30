@@ -44,7 +44,7 @@ class TRTInference:
         elif trt_engine_path.endswith('onnx'):
             print("Building engine and saving it as 'out.trt' for next loadings...")
             engine = self.build_engine_onnx(trt_engine_path, TRT_LOGGER)
-            with open('pcr.engine', 'wb') as f:
+            with open('refiner.engine', 'wb') as f:
                 f.write(engine.serialize())
         else:
             raise NameError("The provided file is not an onnx or an engine")
@@ -177,7 +177,9 @@ if __name__ == '__main__':
     yolo_port = 6000
     it = 100
     #
-    engine = TRTInference('pcr.onnx')
+    engine = TRTInference('refiner.onnx')
+    print('Siuuuuuuuuuuuuu')
+    exit()
     #
     yolo_thread = myThread(engine.infer, yolo_port)
     yolo_thread.start()
@@ -197,6 +199,7 @@ if __name__ == '__main__':
         while not yolo_listener.poll():
             continue
         res = yolo_listener.recv()
+        print()
     # import onnxruntime as ort
     #
     # backbone = ort.InferenceSession('pcr.onnx')

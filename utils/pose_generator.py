@@ -8,7 +8,6 @@ except ImportError:
     print("Open3d CUDA not found!")
     from open3d.cpu.pybind.geometry import PointCloud
 
-
 # TODO NOTE
 # In order to see the visualization correctly, one should stay in the coordinate frame, looking towards +z with +x
 # facing towards -x and +y facing towards -y

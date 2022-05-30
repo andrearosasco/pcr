@@ -54,9 +54,9 @@ class RealSense:
         return color_image, depth_image
 
     @classmethod
-    def pointcloud(cls, depth_image, rgb_image=None):
+    def pointcloud(cls, depth_image, rgb_image=None, scale=1.0):
         if rgb_image is None:
-            return cls._pointcloud(depth_image)
+            return cls._pointcloud(depth_image, scale)
 
         depth_image = o3d.geometry.Image(depth_image)
         rgb_image = o3d.geometry.Image(rgb_image)
@@ -64,11 +64,17 @@ class RealSense:
                                                                     convert_rgb_to_intensity=False,
                                                                     depth_scale=1000)
 
-        intrinsics = {'fx': 384.025146484375, 'fy': 384.025146484375, 'ppx': 319.09661865234375,
-                      'ppy': 237.75723266601562,
+        # intrinsics = {'fx': 384.025146484375, 'fy': 384.025146484375, 'ppx': 319.09661865234375,
+        #               'ppy': 237.75723266601562,
+        #               'width': 640, 'height': 480}
+
+        intrinsics = {'fx': 612.7910766601562, 'fy': 611.8779296875, 'ppx': 321.7364196777344,
+                      'ppy': 245.0658416748047,
                       'width': 640, 'height': 480}
 
-        camera = o3d.camera.PinholeCameraIntrinsic(intrinsics['width'], intrinsics['height'], intrinsics['fx'],
+        intrinsics.update((key, intrinsics[key] * 1.0) for key in intrinsics)
+
+        camera = o3d.camera.PinholeCameraIntrinsic(int(intrinsics['width']), int(intrinsics['height']), intrinsics['fx'],
                                                    intrinsics['fy'], intrinsics['ppx'], intrinsics['ppy'])
 
         pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd, camera)
@@ -80,12 +86,19 @@ class RealSense:
         return pcd
 
     @classmethod
-    def _pointcloud(cls, depth_image):
+    def _pointcloud(cls, depth_image, scale=1.0):
         depth_image = o3d.geometry.Image(depth_image)
 
-        intrinsics = {'fx': 384.025146484375, 'fy': 384.025146484375, 'ppx': 319.09661865234375, 'ppy': 237.75723266601562,
+        # intrinsics = {'fx': 384.025146484375, 'fy': 384.025146484375, 'ppx': 319.09661865234375, 'ppy': 237.75723266601562,
+        #               'width': 640, 'height': 480}
+
+        intrinsics = {'fx': 612.7910766601562, 'fy': 611.8779296875, 'ppx': 321.7364196777344,
+                      'ppy': 245.0658416748047,
                       'width': 640, 'height': 480}
-        camera = o3d.camera.PinholeCameraIntrinsic(intrinsics['width'], intrinsics['height'], intrinsics['fx'],
+
+        intrinsics.update((key, intrinsics[key] * scale) for key in intrinsics)
+
+        camera = o3d.camera.PinholeCameraIntrinsic(int(intrinsics['width']), int(intrinsics['height']), intrinsics['fx'],
                                                    intrinsics['fy'], intrinsics['ppx'], intrinsics['ppy'])
 
         pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image, camera)
