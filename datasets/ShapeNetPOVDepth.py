@@ -1,4 +1,5 @@
 from pathlib import Path
+from random import uniform
 
 import numpy as np
 import torch
@@ -17,33 +18,37 @@ from scipy.spatial.transform import Rotation as R
 
 
 class ShapeNet(data.Dataset):
-    def __init__(self, config, mode="easy/train", overfit_mode=False):
+    def __init__(self, config, mode="easy/train"):
         self.mode = mode
-        self.overfit_mode = overfit_mode
-        #  Backbone Input
         self.data_root = Path(config.dataset_path)
+        #  Backbone Input
         self.partial_points = config.partial_points
-        self.multiplier_complete_sampling = config.multiplier_complete_sampling
-
         # Implicit function input
         self.noise_rate = config.noise_rate
-        self.percentage_sampled = config.percentage_sampled
         self.implicit_input_dimension = config.implicit_input_dimension
+        self.tolerance = config.tolerance
+        self.dist = config.dist
 
-        with (self.data_root / f'{self.mode}.txt').open('r') as file:
+        with (self.data_root / 'splits' / f'{self.mode}.txt').open('r') as file:
             lines = file.readlines()
 
         self.samples = lines
         self.n_samples = len(lines)
 
-        with (self.data_root / 'classes.txt').open('r') as file:
+        with (self.data_root / 'splits' / mode.split('/')[0] / 'classes.txt').open('r') as file:
             self.labels_map = {l.split()[1]: l.split()[0] for l in file.readlines()}
+
+        # Augmentation parameters
+        self.camera_dist = {'low': 400, 'high': 1500}
+
+        self.noise = config.noise  # Noise in the partial pc [the configuration one is for the sdf input]
 
     def __getitem__(self, idx):  # Must return complete, imp_x and impl_y
 
         # Find the mesh
-        dir_path = self.data_root / self.samples[idx].strip()
+        dir_path = self.data_root / 'data' / self.samples[idx].strip()
         label = int(self.labels_map[dir_path.parent.name])
+
         complete_path = dir_path / 'models/model_normalized.obj'
 
         # Load and randomly rotate the mesh
@@ -55,17 +60,20 @@ class ShapeNet(data.Dataset):
 
             # Define camera transformation and intrinsics
             #  (Camera is in the origin facing negative z, shifting it of z=1 puts it in front of the object)
-            dist = 1.5
+            dist = uniform(**self.camera_dist)
+
             camera_parameters = camera.PinholeCameraParameters()
             camera_parameters.extrinsic = np.array([[1, 0, 0, 0],
                                                     [0, 1, 0, 0],
                                                     [0, 0, 1, dist],
                                                     [0, 0, 0, 1]])
-            camera_parameters.intrinsic.set_intrinsics(width=1920, height=1080, fx=1000, fy=1000, cx=959.5, cy=539.5)
+
+            intrinsics = {'fx': 1000, 'fy': 1000, 'cx': 959.5, 'cy': 539.5, 'width': 1920, 'height': 1080}
+            camera_parameters.intrinsic.set_intrinsics(**intrinsics)
 
             # Move the view and take a depth image
             viewer = visualization.Visualizer()
-            viewer.create_window(visible=False)
+            viewer.create_window(width=intrinsics['width'], height=intrinsics['height'], visible=False)
             viewer.clear_geometries()
             viewer.add_geometry(mesh)
 
@@ -73,61 +81,55 @@ class ShapeNet(data.Dataset):
             control.convert_from_pinhole_camera_parameters(camera_parameters)
 
             depth = viewer.capture_depth_float_buffer(True)
+
+            viewer.remove_geometry(mesh)
             viewer.destroy_window()
+            del control
 
-            if np.array(depth).sum() != 0.0:
-                break
+            aux = depth[depth == 0.0]  # mesh too big or too small
+            if np.all(aux) or not np.any(aux):
+                continue
 
-        # # TODO Tests START
-        # aux = np.array(depth)
-        # if sum(aux[0, :]) + sum(aux[:, 0]) + sum(aux[-1, :]) + sum(aux[:, -1]) != 0.0:
-        #     print(complete_path)
-        #     cv2.imshow("Image", np.array(aux))
-        #     cv2.waitKey(0)
-        # # TODO Tests END
+            depth = np.array(depth)
+            if self.noise:  # from [paper link]: model of realsense d435 noise
+                sigma = 0.001063 + 0.0007278 * (depth * 0.001) + 0.003949 * ((depth * 0.001) ** 2)
+                depth += (np.random.normal(0, 1, depth.shape) * (depth != 0) * sigma * 1000)
 
-        depth = np.array(depth)
-        for m in depth.shape[0]:
-            for n in depth.shape[1]:
-                z = depth[m][n]
-                sigma = 0.001063 + 0.0007278*z + 0.003949*(z**2)
-                depth[m][n] = z + np.random.normal(0, sigma, 1)
+            # Generate the partial point cloud
+            depth_image = o3d.geometry.Image(depth)
+            partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image,
+                                                                          camera_parameters.intrinsic,
+                                                                          camera_parameters.extrinsic)
+            old_partial_pcd = np.array(partial_pcd.points)
 
-        # Generate the partial point cloud
-        depth_image = o3d.geometry.Image(depth)
-        partial_pcd = o3d.geometry.PointCloud.create_from_depth_image(depth_image, camera_parameters.intrinsic)
-        partial_pcd = np.array(partial_pcd.points)
+            # Normalize the partial point cloud (all we could do at test time)
+            mean = np.mean(old_partial_pcd, axis=0)
+            partial_pcd = old_partial_pcd - mean
+            var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
 
-        # Normalize the partial point cloud (all we could do at test time)
-        mean = np.mean(np.array(partial_pcd), axis=0)
-        partial_pcd = np.array(partial_pcd) - mean
-        var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
+            partial_pcd = partial_pcd / (var * 2)
 
-        partial_pcd = partial_pcd / (var * 2)
+            # Move the mesh so that it matches the partial point cloud position
+            # (the [0, 0, 1] is to compensate for the fact that the partial pc is in the camera frame)
+            mesh.translate(-mean)  #  + [0, 0, dist] (?)
+            mesh.scale(1 / (var * 2), center=[0, 0, 0])
 
-        # Move the mesh so that it matches the partial point cloud position
-        # (the [0, 0, 1] is to compensate for the fact that the partial pc is in the camera frame)
-        mesh.translate(-mean + [0, 0, dist])
-        mesh.scale(1 / (var * 2), center=[0, 0, 0])
+            # Make sure that the mesh normalized with the partial normalization is in the input space
+            aux = np.array(mesh.vertices)
+            t1 = np.all(np.min(aux, axis=0) > -0.5)
+            t2 = np.all(np.max(aux, axis=0) < 0.5)
 
-        # # TODO Tests START
-        # complete_pcd = mesh.sample_points_uniformly(self.partial_points * self.multiplier_complete_sampling)
-        # aux = np.array(complete_pcd.points)
-        # t1 = np.all(np.min(aux, axis=0) > -0.5)
-        # t2 = np.all(np.min(aux, axis=0) < 0.5)
-        #
-        # if not (t1 and t2):
-        #     print(complete_path)
-        #     draw_geometries([complete_pcd, create_cube()])
-        #
-        # # TODO Tests END
+            if not (t1 and t2):
+                continue
+
+            break
 
         # Sample labeled point on the mesh
         samples, occupancy = sample_point_cloud(mesh,
-                                                self.noise_rate,
-                                                self.percentage_sampled,
-                                                total=self.implicit_input_dimension,
-                                                mode="unsigned")
+                                                n_points=self.implicit_input_dimension,
+                                                dist=self.dist,
+                                                noise_rate=self.noise_rate,
+                                                tolerance=self.tolerance)
 
         # Next lines bring the shape a face of the cube so that there's more space to
         # complete it. But is it okay for the input to be shifted toward -0.5 and not
@@ -143,14 +145,14 @@ class ShapeNet(data.Dataset):
             ids = perm[:self.partial_points]
             partial_pcd = partial_pcd[ids]
         else:
-            print(f'Warning: had to pad the partial pcd {complete_path}')
             diff = self.partial_points - partial_pcd.shape[0]
-            partial_pcd = torch.cat((partial_pcd, torch.zeros(diff, 3)))
+            idx = np.random.choice(partial_pcd.shape[0], diff, replace=False)
+            partial_pcd = torch.cat((partial_pcd, partial_pcd[idx]))
 
         samples = torch.tensor(samples).float()
-        occupancy = torch.tensor(occupancy, dtype=torch.float) / 255
+        occupancy = torch.tensor(occupancy, dtype=torch.float)
 
-        return label, partial_pcd, [str(complete_path), rotation, mean, var], samples, occupancy
+        return label, partial_pcd, [np.array(mesh.vertices), np.array(mesh.triangles)], samples, occupancy
 
     def __len__(self):
         return int(self.n_samples)

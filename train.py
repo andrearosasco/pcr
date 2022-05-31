@@ -1,76 +1,43 @@
-import math
-import os
-import sys
-
-from torch import nn
-
+from utils.reproducibility import make_reproducible
 from utils.lightning import SplitProgressBar
 
 try:
-    from open3d.cuda.pybind.utility import Vector3dVector
+    from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
     from open3d.cuda.pybind.visualization import draw_geometries
     from open3d.cuda.pybind.geometry import PointCloud
 except ImportError:
-    from open3d.cpu.pybind.utility import Vector3dVector
+    from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
     from open3d.cpu.pybind.visualization import draw_geometries
     from open3d.cpu.pybind.geometry import PointCloud
 
-from configs import DataConfig, ModelConfig, TrainConfig
-
+from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
+import os
 os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
-from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint, ProgressBarBase
-from pytorch_lightning.core.memory import ModelSummary
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from torchmetrics import Accuracy, Precision, Recall, F1, AverageMeter
-
-from utils.logger import Logger
-import random
-from pathlib import Path
-import numpy as np
-import torch.nn.functional as F
-from torch.nn.utils import clip_grad_value_
-from torch.utils.data import DataLoader
-from datasets.ShapeNetPOVRemoval import ShapeNet
-from models.HyperNetwork import HyperNetwork
-import torch
-from tqdm import tqdm
-import copy
-from utils.misc import create_3d_grid, check_mesh_contains, create_cube
-import open3d as o3d
+from model.PCRNetwork import PCRNetwork as Model
+import pytorch_lightning as pl
 import wandb
 
-import pytorch_lightning as pl
-
-
-# =======================  Reproducibility =======================
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2 ** 32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-seed = TrainConfig.seed
-torch.manual_seed(seed)
-np.random.seed(seed)
-random.seed(seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-generator = torch.Generator()
-generator.manual_seed(TrainConfig.seed)
-
-
 if __name__ == '__main__':
-    model = HyperNetwork(ModelConfig)
+    # make_reproducible(TrainConfig.seed)
 
-    config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
-                        not k.startswith("__")},
-              'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
-                        not k.startswith("__")},
-              'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-                       not k.startswith("__")}}
+    model = Model(ModelConfig)
 
-    wandb_logger = WandbLogger(project='pcr', log_model='all', config=config)
+    loggers = []
+    if EvalConfig.wandb:
+        config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
+                            not k.startswith("__")},
+                  'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
+                            not k.startswith("__")},
+                  'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
+                           not k.startswith("__")}}
+
+        # TODO look at segmentation
+        wandb.login()
+        wandb.init(project="pcr")
+        loggers.append(WandbLogger(project='pcr', log_model='all', config=config))
+        wandb.watch(model, log='all', log_freq=EvalConfig.log_metrics_every)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -79,16 +46,16 @@ if __name__ == '__main__':
         mode='max',
         auto_insert_metric_name=False)
 
-
-
     trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
                          precision=32,
                          gpus=1,
-                         log_every_n_steps=TrainConfig.log_metrics_every,
-                         logger=[wandb_logger],
+                         log_every_n_steps=EvalConfig.log_metrics_every,
+                         check_val_every_n_epoch=EvalConfig.val_every,
+                         logger=loggers,
                          gradient_clip_val=TrainConfig.clip_value,
                          gradient_clip_algorithm='value',
-                         callbacks=[GPUStatsMonitor(),
+                         num_sanity_val_steps=2,
+                         callbacks=[
                                     SplitProgressBar(),
                                     checkpoint_callback],
                          )
