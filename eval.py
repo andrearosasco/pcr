@@ -2,11 +2,11 @@ import math
 import os
 import sys
 
-from configs import DataConfig, ModelConfig, TrainConfig, server_config, EvalConfig
+from utils.configuration import BaseConfig as Config
 from utils.lightning import SplitProgressBar
 from utils.reproducibility import make_reproducible
 
-os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
+os.environ['CUDA_VISIBLE_DEVICES'] = Config.General.visible_dev
 from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint, ProgressBarBase
 from pytorch_lightning.loggers import WandbLogger
 
@@ -19,8 +19,8 @@ import pytorch_lightning as pl
 
 
 if __name__ == '__main__':
-    make_reproducible(TrainConfig.seed)
-    model = Model(ModelConfig)
+    make_reproducible(Config.General.seed)
+    model = Model(Config.Model)
     # model.to('cuda')
     # print_memory()
 
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     # aux = {}
     # aux['state_dict'] = checkpoint
     # torch.save(aux, './checkpoint/best.ptc')
-    model = Model.load_from_checkpoint('./checkpoint/best.ptc', config=server_config.ModelConfig, )
+    model = Model.load_from_checkpoint('./checkpoint/best.ptc', config=Config.Model, )
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -39,12 +39,12 @@ if __name__ == '__main__':
         filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
         auto_insert_metric_name=False)
 
-    trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
+    trainer = pl.Trainer(max_epochs=Config.Train.n_epoch,
                          precision=32,
                          gpus=1,
-                         log_every_n_steps=EvalConfig.log_metrics_every,
+                         log_every_n_steps=Config.Eval.log_metrics_every,
                          logger=[wandb_logger],
-                         gradient_clip_val=TrainConfig.clip_value,
+                         gradient_clip_val=Config.Train.clip_value,
                          gradient_clip_algorithm='value',
                          callbacks=[GPUStatsMonitor(),
                                     SplitProgressBar(),

@@ -159,14 +159,12 @@ class ShapeNet(data.Dataset):
 
 
 if __name__ == "__main__":
-    from ours.configs.local_config import DataConfig
+    from utils.configuration import BaseConfig as Config
     from tqdm import tqdm
     from open3d.cpu.pybind.geometry import PointCloud
     from open3d.cpu.pybind.utility import Vector3dVector
 
-    a = DataConfig()
-    a.dataset_path = Path("..", "data", "ShapeNetCore.v2")
-    iterator = ShapeNet(a)
+    iterator = ShapeNet(Config.Data)
     loader = DataLoader(iterator, num_workers=0, shuffle=False, batch_size=1)
     for elem in tqdm(loader):
         lab, part, comp, x, y = elem

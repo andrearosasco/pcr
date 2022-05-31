@@ -15,12 +15,12 @@ except ImportError:
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
     from open3d.cpu.pybind.geometry import PointCloud
 
-from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
+from utils.configuration import BaseConfig as Config
 
 from torchmetrics import Accuracy, Precision, Recall, F1, MeanMetric
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from datasets.BoxNetPOVDepth import BoxNet as Dataset
+from datasets.ShapeNetPOVDepth import ShapeNet as Dataset
 
 from utils.misc import create_3d_grid, check_mesh_contains, sample_point_cloud
 import open3d as o3d
@@ -62,15 +62,15 @@ class PCRNetwork(pl.LightningModule, ABC):
     #             nn.init.constant_(m.bias, 0)
 
     def prepare_data(self):
-        self.training_set = Dataset(DataConfig, DataConfig.train_samples)
-        self.valid_set = Dataset(DataConfig, DataConfig.val_samples)
+        self.training_set = Dataset(Config.Data)
+        self.valid_set = Dataset(Config.Data)
 
     def train_dataloader(self):
         dl = DataLoader(self.training_set,
-                        batch_size=TrainConfig.mb_size,
+                        batch_size=Config.Train.mb_size,
                         shuffle=True,
                         drop_last=True,
-                        num_workers=TrainConfig.num_workers,
+                        num_workers=Config.General.num_workers,
                         pin_memory=True,
                         # worker_init_fn=get_init_fn(TrainConfig.seed),
                         # generator=get_generator(TrainConfig.seed)
@@ -82,9 +82,9 @@ class PCRNetwork(pl.LightningModule, ABC):
         return DataLoader(
             self.valid_set,
             shuffle=False,
-            batch_size=EvalConfig.mb_size,
+            batch_size=Config.Eval.mb_size,
             drop_last=False,
-            num_workers=TrainConfig.num_workers,
+            num_workers=Config.General.num_workers,
             pin_memory=True)
 
     def forward(self, partial, object_id=None, step=0.01):
@@ -97,7 +97,7 @@ class PCRNetwork(pl.LightningModule, ABC):
             # y = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
             # self.sdf_tr = torch2trt(self.sdf, [y])
 
-        samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
+        samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(Config.General.device)
 
         fast_weights, _ = self.backbone(partial)
         prediction = torch.sigmoid(self.sdf(samples, fast_weights))
@@ -105,7 +105,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         return samples[prediction.squeeze(-1) > 0.5], fast_weights
 
     def configure_optimizers(self):
-        optimizer = TrainConfig.optimizer(self.parameters(), lr=TrainConfig.lr, weight_decay=TrainConfig.wd)
+        optimizer = Config.Train.optimizer(self.parameters(), lr=Config.Train.lr, weight_decay=Config.Train.wd)
         return optimizer
 
     def on_train_epoch_start(self):
@@ -116,8 +116,8 @@ class PCRNetwork(pl.LightningModule, ABC):
         label, partial, _, samples, occupancy = batch
 
         one_hot = None
-        if ModelConfig.use_object_id:
-            one_hot = torch.zeros((label.shape[0], DataConfig.n_classes), dtype=torch.float).to(label.device)
+        if Config.Model.use_object_id:
+            one_hot = torch.zeros((label.shape[0], Config.Data.n_classes), dtype=torch.float).to(label.device)
             one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
         fast_weights, _ = self.backbone(partial, object_id=one_hot)
@@ -169,25 +169,25 @@ class PCRNetwork(pl.LightningModule, ABC):
         # The sampling on the grid simulate the evaluation process
         # But if we use tolerance=0.0 we are not able to extract a ground truth
         samples1 = create_3d_grid(batch_size=label.shape[0],
-                                  step=EvalConfig.grid_res_step).to(TrainConfig.device)
+                                  step=Config.Eval.grid_res_step).to(Config.General.device)
         occupancy1 = check_mesh_contains(meshes_list, samples1.cpu().numpy(),
-                                         tolerance=EvalConfig.tolerance).tolist()  # TODO PARALLELIZE IT
-        occupancy1 = torch.FloatTensor(occupancy1).to(TrainConfig.device)
+                                         tolerance=Config.Data.tolerance).tolist()  # TODO PARALLELIZE IT
+        occupancy1 = torch.FloatTensor(occupancy1).to(Config.General.device)
 
         # The sampling with "sample_point_cloud" simulate the sampling used during training
         # This is useful as we always get ground truths sampling on the meshes but it doesn't reflect
         #   how the algorithm will work after deployment
         samples2, occupancy2 = [], []
         for mesh in meshes_list:
-            s, o = sample_point_cloud(mesh, n_points=DataConfig.implicit_input_dimension, dist=EvalConfig.dist,
-                                      noise_rate=EvalConfig.noise_rate, tolerance=EvalConfig.tolerance)
+            s, o = sample_point_cloud(mesh, n_points=Config.Data.implicit_input_dimension, dist=Config.Data.dist,
+                                      noise_rate=Config.Data.noise_rate, tolerance=Config.Data.tolerance)
             samples2.append(s), occupancy2.append(o)
-        samples2 = torch.tensor(np.array(samples2)).float().to(TrainConfig.device)
-        occupancy2 = torch.tensor(occupancy2, dtype=torch.float).unsqueeze(-1).to(TrainConfig.device)
+        samples2 = torch.tensor(np.array(samples2)).float().to(Config.General.device)
+        occupancy2 = torch.tensor(occupancy2, dtype=torch.float).unsqueeze(-1).to(Config.General.device)
 
         one_hot = None
-        if ModelConfig.use_object_id:
-            one_hot = torch.zeros((label.shape[0], DataConfig.n_classes), dtype=torch.float).to(label.device)
+        if Config.Model.use_object_id:
+            one_hot = torch.zeros((label.shape[0], Config.Data.n_classes), dtype=torch.float).to(label.device)
             one_hot[torch.arange(0, label.shape[0]), label] = 1.
 
         ############# INFERENCE #############
@@ -201,7 +201,7 @@ class PCRNetwork(pl.LightningModule, ABC):
 
     def validation_step_end(self, output):
         mesh = output['mesh']
-        if EvalConfig.grid_eval:
+        if Config.Eval.grid_eval:
             pred, trgt = output['out1'], output['target1'].int()
         else:
             pred, trgt = output['out2'], output['target2'].int()
@@ -227,7 +227,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
             mesh = batch['mesh'][-1]
-            if EvalConfig.grid_eval:
+            if Config.Eval.grid_eval:
                 out, trgt, samples = batch['out1'][-1], batch['target1'][-1], batch['samples1'][-1]
             else:
                 out, trgt, samples = batch['out2'][-1], batch['target2'][-1], batch['samples2'][-1]
@@ -259,7 +259,7 @@ class PCRNetwork(pl.LightningModule, ABC):
             partial = np.array(partial.squeeze())
 
             # TODO Fix partial and Add colors
-            if EvalConfig.wandb:
+            if Config.Eval.wandb:
                 self.trainer.logger.experiment[0].log(
                     {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
                 self.trainer.logger.experiment[0].log(

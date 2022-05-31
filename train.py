@@ -10,9 +10,9 @@ except ImportError:
     from open3d.cpu.pybind.visualization import draw_geometries
     from open3d.cpu.pybind.geometry import PointCloud
 
-from configs import DataConfig, ModelConfig, TrainConfig, EvalConfig
+from utils.configuration import BaseConfig as Config
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = TrainConfig.visible_dev
+os.environ['CUDA_VISIBLE_DEVICES'] = Config.General.visible_dev
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from model.PCRNetwork import PCRNetwork as Model
@@ -22,22 +22,17 @@ import wandb
 if __name__ == '__main__':
     # make_reproducible(TrainConfig.seed)
 
-    model = Model(ModelConfig)
+    model = Model(Config.Model)
 
     loggers = []
-    if EvalConfig.wandb:
-        config = {'train': {k: dict(TrainConfig.__dict__)[k] for k in dict(TrainConfig.__dict__) if
-                            not k.startswith("__")},
-                  'model': {k: dict(ModelConfig.__dict__)[k] for k in dict(ModelConfig.__dict__) if
-                            not k.startswith("__")},
-                  'data': {k: dict(DataConfig.__dict__)[k] for k in dict(DataConfig.__dict__) if
-                           not k.startswith("__")}}
+    if Config.Eval.wandb:
+        config = Config.to_dict()
 
         # TODO look at segmentation
         wandb.login()
         wandb.init(project="pcr")
         loggers.append(WandbLogger(project='pcr', log_model='all', config=config))
-        wandb.watch(model, log='all', log_freq=EvalConfig.log_metrics_every)
+        wandb.watch(model, log='all', log_freq=Config.Eval.log_metrics_every)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -46,13 +41,13 @@ if __name__ == '__main__':
         mode='max',
         auto_insert_metric_name=False)
 
-    trainer = pl.Trainer(max_epochs=TrainConfig.n_epoch,
+    trainer = pl.Trainer(max_epochs=Config.Train.n_epoch,
                          precision=32,
                          gpus=1,
-                         log_every_n_steps=EvalConfig.log_metrics_every,
-                         check_val_every_n_epoch=EvalConfig.val_every,
+                         log_every_n_steps=Config.Eval.log_metrics_every,
+                         check_val_every_n_epoch=Config.Eval.val_every,
                          logger=loggers,
-                         gradient_clip_val=TrainConfig.clip_value,
+                         gradient_clip_val=Config.Train.clip_value,
                          gradient_clip_algorithm='value',
                          num_sanity_val_steps=2,
                          callbacks=[
