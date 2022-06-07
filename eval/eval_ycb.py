@@ -1,25 +1,34 @@
+import math
 import os
-from configs import Config
-os.environ['CUDA_VISIBLE_DEVICES'] = Config.General.visible_dev
-
+import sys
 from pathlib import Path
+
 import wandb
+
+from configs import Config
+
 from utils.lightning import SplitProgressBar
 from utils.reproducibility import make_reproducible
-from pytorch_lightning.callbacks import GPUStatsMonitor, ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
-from model import PCRNetwork as Model
 
+os.environ['CUDA_VISIBLE_DEVICES'] = Config.General.visible_dev
+from pytorch_lightning.callbacks import GPUStatsMonitor, ProgressBar, ModelCheckpoint, ProgressBarBase
+from pytorch_lightning.loggers import WandbLogger
+
+
+from model import PCRNetwork as Model
 import pytorch_lightning as pl
 
 
 def main():
     make_reproducible(Config.General.seed)
-
+    model = Model(Config.Model)
+    # model.to('cuda')
+    # print_memory()
     id = '2pw4byh5'
     project = 'pcr'
     ckpt = f'model-{id}:v21'
 
+    # ckpt.replace(':', '-')
     file = Path('artifacts') / ckpt.replace(':', '-') / 'model.ckpt'  # on windows: .replace(':', '-')
 
     run = wandb.init(id=id)
@@ -28,12 +37,14 @@ def main():
         run.use_artifact(f'rosasco/{project}/{ckpt}', type='model').download(f'artifacts/{ckpt}/')
     wandb.finish(exit_code=0)
 
-    model = Model.load_from_checkpoint(str(file))
-
-    wandb_logger = WandbLogger(name='eval_shapenet', project='pcr', log_model='all')
+    wandb_logger = WandbLogger(project='eval_ycb', log_model='all')
     wandb_logger.watch(model)
 
-
+    # checkpoint = torch.load('./checkpoint/20-10-21_0732.ptc')
+    # aux = {}
+    # aux['state_dict'] = checkpoint
+    # torch.save(aux, './checkpoint/best.ptc')
+    model = Model.load_from_checkpoint(str(file), config=Config.Model, strict=False)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -53,4 +64,5 @@ def main():
                                     checkpoint_callback],
                          )
 
+    # trainer.fit(model)
     trainer.validate(model)

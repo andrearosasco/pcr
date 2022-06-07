@@ -1,1 +1,1 @@
-
+from .debug_config import Config

@@ -1,21 +1,25 @@
 import abc
+import copy
 import importlib
 import json
 from abc import ABC, abstractmethod
 import __main__
 
-
 class ABCGetAttrMeta(abc.ABCMeta):
+    cfg = None
+
     def __getattribute__(self, item):
         try:
             return abc.ABCMeta.__getattribute__(self, item)
         except AttributeError:
-            return __main__.Config.__getattribute__(__main__.Config, item)
+            return ABCGetAttrMeta.cfg.__getattribute__(item)
 
 
 class BaseConfig(metaclass=ABCGetAttrMeta):
 
     def __init__(self):
+        ABCGetAttrMeta.cfg = self
+
         mod = importlib.import_module(self.run)
         getattr(mod, 'main')()
 
@@ -31,15 +35,17 @@ class BaseConfig(metaclass=ABCGetAttrMeta):
 
     @classmethod
     def to_dict(cls, target=None):
+        from configs import Config
+
         if target is None:
-            target = __main__.Config
+            target = Config
 
         res = {}
         for k in dir(target):
             if not k.startswith('_') and k not in ['to_dict', 'to_json']:
                 attr = getattr(target, k)
                 if type(attr) == type:
-                    res[k] = __main__.Config.to_dict(attr)
+                    res[k] = Config.to_dict(attr)
                 else:
                     res[k] = attr
         return res

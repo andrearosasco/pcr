@@ -3,19 +3,15 @@ import torch
 from sklearn.neighbors import KDTree
 import numpy as np
 
-from configs import TrainConfig
 
+def chamfer_batch(predictions, meshes):
 
-def chamfer_batch(samples, predictions, meshes):
-    distances = []
-    for mesh, pred in zip(meshes, predictions):
-        pc1 = samples[0, (pred > 0.5).squeeze()].unsqueeze(0)
-        if pc1.shape[1] == 0:
-            pc1 = torch.zeros(pc1.shape[0], 1, pc1.shape[2], device=TrainConfig.device)
-        pc2 = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0).to(TrainConfig.device)
+    ground_truth = torch.zeros_like(predictions)
+    for i, mesh in enumerate(meshes):
+        ground_truth[i] = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0)
 
-        distances.append(chamfer_distance(pc1, pc2))
-    return torch.stack(distances).mean().detach().cpu()
+    d = chamfer_distance(predictions, ground_truth)
+    return d.mean().detach().cpu()
 
 
 def chamfer_distance(points1, points2, give_id=False):

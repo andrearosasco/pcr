@@ -1,8 +1,6 @@
 import subprocess
 from pathlib import Path
-
 import torch
-
 from utils.configuration import BaseConfig
 
 
@@ -22,9 +20,9 @@ class Config(BaseConfig):
         git = git_hash()
 
     class Train:
-        lr = 1e-5
+        lr = 1e-4
         wd = 0.0
-        n_epoch = 1000
+        n_epoch = 100
         clip_value = 1
         optimizer = torch.optim.Adam
         loss = torch.nn.BCEWithLogitsLoss
@@ -44,7 +42,7 @@ class Config(BaseConfig):
 
     class Data:
         dataset_path = "./data/ShapeNetCore.v2"
-        mode = 'hard'
+        mode = 'easy'
         partial_points = 2048  # number of points per input
         multiplier_complete_sampling = 50
         implicit_input_dimension = 8192
@@ -52,8 +50,6 @@ class Config(BaseConfig):
         noise_rate = 0.01
         tolerance = 0.0
         n_classes = 55
-        # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
-        # in 0, 0, 0
         offset = True
 
         class Train:
@@ -84,17 +80,8 @@ class Config(BaseConfig):
         assert divmod(embed_dim, num_heads)[1] == 0
 
 
-# import sys
-#
-# def trace(frame, event, arg):
-#     if frame.f_code.co_filename[:4] != '/opt' and frame.f_code.co_filename[:1] != '<':
-#         print("%s, %s:%d" % (event, frame.f_code.co_filename, frame.f_lineno))
-#     return trace
-#
-# sys.settrace(trace)
-
 if __name__ == '__main__':
-    import train
+    from eval import eval_shapenet
     with Path('configs/__init__.py').open('w+') as f:
-        f.writelines(['from .training_config import Config'])
-    train.main()
+        f.writelines(['from .eval_shapenet_config import Config'])
+    eval_shapenet.main()

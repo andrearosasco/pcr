@@ -1,16 +1,17 @@
 from utils.reproducibility import make_reproducible
 from utils.lightning import SplitProgressBar
 
-try:
-    from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
-    from open3d.cuda.pybind.visualization import draw_geometries
-    from open3d.cuda.pybind.geometry import PointCloud
-except ImportError:
-    from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
-    from open3d.cpu.pybind.visualization import draw_geometries
-    from open3d.cpu.pybind.geometry import PointCloud
+# try:
+#     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
+#     from open3d.cuda.pybind.visualization import draw_geometries
+#     from open3d.cuda.pybind.geometry import PointCloud
+# except ImportError:
 
-from utils.configuration import BaseConfig as Config
+    # from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
+    # from open3d.cpu.pybind.visualization import draw_geometries
+    # from open3d.cpu.pybind.geometry import PointCloud
+
+from configs import Config
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = Config.General.visible_dev
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -18,21 +19,19 @@ from pytorch_lightning.loggers import WandbLogger
 from model.PCRNetwork import PCRNetwork as Model
 import pytorch_lightning as pl
 import wandb
+import torch
 
-if __name__ == '__main__':
+def main():
+    # torch.multiprocessing.set_sharing_strategy('file_system')
     # make_reproducible(TrainConfig.seed)
 
     model = Model(Config.Model)
 
     loggers = []
     if Config.Eval.wandb:
-        config = Config.to_dict()
-
-        # TODO look at segmentation
-        wandb.login()
-        wandb.init(project="pcr")
-        loggers.append(WandbLogger(project='pcr', log_model='all', config=config))
-        wandb.watch(model, log='all', log_freq=Config.Eval.log_metrics_every)
+        project = 'pcr'
+        wandb = WandbLogger(project=project, log_model='all', config=Config.to_dict())
+        loggers.append(wandb)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',

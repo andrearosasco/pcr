@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import torch
 
@@ -17,29 +18,33 @@ class Config(BaseConfig):
         device = 'cuda'
         visible_dev = '0'
         seed = 1
-        num_workers = 30
+        num_workers = 0
         git = git_hash()
 
     class Train:
         lr = 1e-5
         wd = 0.0
         n_epoch = 100
-        mb_size = 8
         clip_value = 1
         optimizer = torch.optim.Adam
         loss = torch.nn.BCEWithLogitsLoss
         loss_reduction = "mean"  # "none"
 
+        mb_size = 8
+
     class Eval:
-        wandb = True
+        wandb = False
         log_metrics_every = 100
-        val_every = 10
+        val_every = 1
 
         grid_eval = False
         grid_res_step = 0.04
 
+        mb_size = 8
+
     class Data:
-        dataset_path = "../data/ShapeNetCore.v2"
+        dataset_path = "./data/ShapeNetCore.v2"
+        mode = 'hard'
         partial_points = 2048  # number of points per input
         multiplier_complete_sampling = 50
         implicit_input_dimension = 8192
@@ -47,7 +52,7 @@ class Config(BaseConfig):
         noise_rate = 0.01
         tolerance = 0.0
         n_classes = 55
-        noise = False
+        offset = True
 
         class Eval:
             mb_size = 8
@@ -78,4 +83,7 @@ class Config(BaseConfig):
 
 
 if __name__ == '__main__':
-    Config()
+    import train
+    with Path('configs/__init__.py').open('w+') as f:
+        f.writelines(['from .debug_config import Config'])
+    train.main()
