@@ -33,6 +33,8 @@ class ChamferDistanceL2(torch.nn.Module):
         self.ignore_zeros = ignore_zeros
 
     def forward(self, xyz1, xyz2):
+        assert xyz1.dim() == xyz2.dim() == 3
+
         batch_size = xyz1.size(0)
         if batch_size == 1 and self.ignore_zeros:
             non_zeros1 = torch.sum(xyz1, dim=2).ne(0)
@@ -51,6 +53,7 @@ class ChamferDistanceL2_split(torch.nn.Module):
         self.ignore_zeros = ignore_zeros
 
     def forward(self, xyz1, xyz2):
+        assert xyz1.dim() == xyz2.dim() == 3
         batch_size = xyz1.size(0)
         if batch_size == 1 and self.ignore_zeros:
             non_zeros1 = torch.sum(xyz1, dim=2).ne(0)
@@ -69,6 +72,7 @@ class ChamferDistanceL1(torch.nn.Module):
         self.ignore_zeros = ignore_zeros
 
     def forward(self, xyz1, xyz2):
+        assert xyz1.dim() == xyz2.dim() == 3
         batch_size = xyz1.size(0)
         if batch_size == 1 and self.ignore_zeros:
             non_zeros1 = torch.sum(xyz1, dim=2).ne(0)

@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from open3d.cpu.pybind.visualization import draw_geometries
 
+from datasets.DebugDataset import DebugDataset
 from datasets.PCNDataset import PCN
 from utils.chamfer import ChamferDistanceL2, ChamferDistanceL1
 from utils.metrics import chamfer_batch, chamfer_batch_pc
@@ -89,6 +90,9 @@ class PCRNetwork(pl.LightningModule, ABC):
 
         self.training_set = PCN(subset="train")
         self.valid_set = PCN(subset="val")
+
+        # self.training_set = DebugDataset(subset="train")
+        # self.valid_set = DebugDataset(subset="worst")
         print(len(self.valid_set))
 
     def train_dataloader(self):
@@ -201,18 +205,17 @@ class PCRNetwork(pl.LightningModule, ABC):
             #     print()
             #     pass
 
-            # for p, l, g in zip(samples, target, ground_truth):
-            #     aux1 = PointCloud(points=Vector3dVector(p[l.bool().squeeze()].cpu().numpy()))
-            #     aux1.paint_uniform_color([0, 1, 0])
-            #     aux2 = PointCloud(points=Vector3dVector(p[~l.bool().squeeze()].cpu().numpy()))
-            #     aux2.paint_uniform_color([1, 0, 0])
-            #     aux3 = PointCloud(points=Vector3dVector(g.cpu().numpy()))
-            #     aux3.paint_uniform_color([0, 0, 1])
-            #
-            #     o3d.pybind.visualization.draw_geometries([aux1, aux3])
-            #     o3d.pybind.visualization.draw_geometries([aux2, aux3])
-            #     o3d.pybind.visualization.draw_geometries([aux1, aux2])
-            #     break
+            for p, l, g in zip(samples, target, ground_truth):
+                aux1 = PointCloud(points=Vector3dVector(p[l.bool().squeeze()].cpu().numpy()))
+                aux1.paint_uniform_color([0, 1, 0])
+                aux2 = PointCloud(points=Vector3dVector(p[~l.bool().squeeze()].cpu().numpy()))
+                aux2.paint_uniform_color([1, 0, 0])
+                aux3 = PointCloud(points=Vector3dVector(g.cpu().numpy()))
+                aux3.paint_uniform_color([0, 0, 1])
+
+                o3d.pybind.visualization.draw_geometries([aux1, aux3])
+                o3d.pybind.visualization.draw_geometries([aux2, aux3])
+                o3d.pybind.visualization.draw_geometries([aux1, aux2])
 
             return {'loss': loss, 'pred': pred.detach().cpu(), 'target': target.detach().cpu()}
 
@@ -271,17 +274,29 @@ class PCRNetwork(pl.LightningModule, ABC):
                     fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in range(0, 12, 3)]
 
         pc1 = self.decoder(fast_weights)
+        # samples1 = create_3d_grid(batch_size=partial.shape[0],
+        #                           step=Config.Eval.grid_res_step).to(Config.General.device)
+        # prob = torch.sigmoid(self.sdf(samples1, fast_weights))
+        for p, g in zip(pc1, ground_truth):
+            self.cd.append(chamfer_batch_pc(p.unsqueeze(0), g.unsqueeze(0)).item())
+
         out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
 
-        # target = check_occupancy(ground_truth, pc1, voxel_size=Config.Data.tolerance)
+
+        target = check_occupancy(ground_truth, pc1, voxel_size=Config.Data.tolerance)
+
+        # for p, g, c, l in zip(pc1, ground_truth, class_id, label):
+        #     self.cls_count[f'{c}/{l}'] += 1
+        #     cd = chamfer_batch_pc(p.unsqueeze(0), g.unsqueeze(0)).item()
+        #     self.cls_cd[f'{c}/{l}'] += cd
 
         # if label[0] == '545672cd928e85e7d706ecb3379aa341':
         #     print()
         #     pass
-        # for p, l, g in zip(pc1, target, ground_truth):
+        # for p, l, pt, g in zip(pc1, target, partial, ground_truth):
         #     self.cls_count[class_id[0]] += 1
         #     cd = chamfer_batch_pc(p.unsqueeze(0), g.unsqueeze(0)).item()
-        #     self.cls_cd[class_id[0]] += torch.sum(torch.prod(ground_truth == 0.0, dim=2) != 0, dim=1).item()  # cd
+        #     self.cls_cd[class_id[0]] += cd
             # if torch.sum(torch.sum(ground_truth == 0.0, dim=2) != 0, dim=1).item() != 0:
             #     print()
             #     pass
@@ -294,20 +309,24 @@ class PCRNetwork(pl.LightningModule, ABC):
             # aux2.paint_uniform_color([1, 0, 0])
             # aux3 = PointCloud(points=Vector3dVector(g.cpu().numpy()))
             # aux3.paint_uniform_color([0, 0, 1])
-            #
-            # o3d.pybind.visualization.draw_geometries([aux1, aux2, aux3])
+            # aux4 = PointCloud(points=Vector3dVector(pt.cpu().numpy()))
+            # aux4.paint_uniform_color([0, 1, 1])
+
+            # print()
+            # o3d.pybind.visualization.draw_geometries([aux4])
+            # o3d.pybind.visualization.draw_geometries([aux1, aux2, aux3, aux4])
 
         return {'pc1': pc1, 'pre_pc': pc1_pre, 'out2': out2.detach().squeeze(2).cpu(),
                 'target2': occupancy2.detach().cpu(), 'samples2': samples2,
                 'partial': partial.detach().cpu(), 'ground_truth': ground_truth}
 
     def validation_step_end(self, output):
-        pred, trgt = output['out2'], output['target2'].int()
-
-        self.accuracy(pred, trgt), self.precision_(pred, trgt)
-        self.avg_chamfer(chamfer_batch_pc(output['pc1'], output['ground_truth']))
-        self.pre_adpt_chamfer(chamfer_batch_pc(output['pre_pc'], output['ground_truth']))
-        self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
+        # pred, trgt = output['out2'], output['target2'].int()
+        #
+        # self.accuracy(pred, trgt), self.precision_(pred, trgt)
+        # self.avg_chamfer(chamfer_batch_pc(output['pc1'], output['ground_truth']))
+        # self.pre_adpt_chamfer(chamfer_batch_pc(output['pre_pc'], output['ground_truth']))
+        # self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
 
         return output
 

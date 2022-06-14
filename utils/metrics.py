@@ -19,7 +19,7 @@ def chamfer_batch(predictions, meshes):
 def chamfer_batch_pc(predictions, ground_truth):
 
     # d2 = ChamferDistanceL2()(predictions, ground_truth)
-    d1 = ChamferDistanceL1(ignore_zeros=True)(predictions, ground_truth)
+    d1 = ChamferDistanceL1()(predictions, ground_truth)
     # d3 = chamfer_distance(predictions, ground_truth).mean()
 
     return d1

@@ -24,17 +24,16 @@ def main():
     # torch.multiprocessing.set_sharing_strategy('file_system')
     # make_reproducible(TrainConfig.seed)
     # wandb.init(settings=wandb.Settings(start_method="fork"))
-    wandb.init(settings=wandb.Settings(start_method='fork'))
     model = Model(Config.Model)
 
-    id = '3bzl6f0w'
-    ckpt = f'model-{id}:v50'
+    id = 'bjmyg6wm'
+    ckpt = f'model-{id}:v103'
     project = 'pcr'
 
     ckpt_path = None
     loggers = []
     resume = False
-    use_checkpoint = False
+    use_checkpoint = True
 
     if Config.Eval.wandb:
         if use_checkpoint:
@@ -43,7 +42,7 @@ def main():
             wandb.finish(exit_code=0)
 
             ckpt_path = f'artifacts/{ckpt}/model.ckpt'
-            model = Model.load_from_checkpoint(str(ckpt_path), config=Config.Model)  # .replace(':', '-')
+            model = Model.load_from_checkpoint(str(ckpt_path.replace(':', '-')), config=Config.Model)  #
 
         if resume:
             wandb_logger = WandbLogger(project=project, id=id, log_model='all', resume='must', config=Config.to_dict())
@@ -76,4 +75,4 @@ def main():
                                     checkpoint_callback],
                          )
 
-    trainer.fit(model, ckpt_path=ckpt_path)  # .replace(':', '-')
+    trainer.validate(model, ckpt_path=ckpt_path.replace(':', '-'))  # .replace(':', '-')

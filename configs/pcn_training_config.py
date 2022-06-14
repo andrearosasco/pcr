@@ -18,7 +18,7 @@ class Config(BaseConfig):
         device = 'cuda'
         visible_dev = '0'
         seed = 1
-        num_workers = 8
+        num_workers = 30
         git = git_hash()
 
     class Train:
@@ -33,7 +33,7 @@ class Config(BaseConfig):
         adaptation = False
         chamfer = False
 
-        mb_size = 1
+        mb_size = 32
 
     class Eval:
         wandb = True
@@ -43,25 +43,25 @@ class Config(BaseConfig):
         grid_eval = False
         grid_res_step = 0.04
 
-        mb_size = 1
+        mb_size = 32
 
     class Data:
         dataset_path = "./data/PCN"
         partial_points = 2048  # number of points per input
         multiplier_complete_sampling = 50
-        implicit_input_dimension = 8192 * 2
+        implicit_input_dimension = 8192
         dist = [0.1, 0.4, 0.5]
         noise_rate = 0.1
-        tolerance = 0.01
+        tolerance = 0.0
         n_classes = 55
         # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
         # in 0, 0, 0
 
         class Train:
-            mb_size = 1
+            mb_size = 32
 
         class Eval:
-            mb_size = 1
+            mb_size = 32
 
     class Model:
         knn_layer = 1
@@ -78,15 +78,26 @@ class Config(BaseConfig):
         out_size = 1024
         # Implicit Function
         hidden_dim = 32
-        depth = 4
+        depth = 2
         # Others
         use_object_id = False
         use_deep_weights_generator = False
         assert divmod(embed_dim, num_heads)[1] == 0
 
 
+# import sys
+#
+# def trace(frame, event, arg):
+#     if frame.f_code.co_filename[:4] != '/opt' and frame.f_code.co_filename[:1] != '<':
+#         print("%s, %s:%d" % (event, frame.f_code.co_filename, frame.f_lineno))
+#     return trace
+#
+# sys.settrace(trace)
+
 if __name__ == '__main__':
     import train2
     with Path('configs/__init__.py').open('w+') as f:
-        f.writelines(['from .debug_config import Config'])
+        f.writelines(['from .pcn_training_config import Config'])
+        f.flush()
+
     train2.main()

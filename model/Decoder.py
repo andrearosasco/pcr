@@ -24,11 +24,11 @@ class Decoder:
             c1, c2, c3, c4 = 1, 0, 0, 0 #1, 0, 0  1, 1e3, 0 # 0, 1e4, 5e2
             new_points = [[] for _ in range(batch_size)]
             # refined_pred.detach().clone()
-            for step in range(20):
+            for step in range(100):
                 results = self.sdf(refined_pred, fast_weights)
 
                 for i in range(batch_size):
-                    new_points[i] += [refined_pred[i].detach().clone()[(torch.sigmoid(results[i]).squeeze() >= 0.5), :]]
+                    new_points[i] += [refined_pred[i].detach().clone()[(torch.sigmoid(results[i]).squeeze() >= 0.7), :]]
 
                 gt = torch.ones_like(results[..., 0], dtype=torch.float32)
                 gt[:, :] = 1
