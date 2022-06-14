@@ -16,24 +16,23 @@ import pytorch_lightning as pl
 def main():
     make_reproducible(Config.General.seed)
 
-    id = '2pw4byh5'
+    id = '3ny0ctj1' # '2u76m6gp'
+    ckpt = f'model-{id}:v103' # '400'
     project = 'pcr'
-    ckpt = f'model-{id}:v21'
 
     file = Path('artifacts') / ckpt.replace(':', '-') / 'model.ckpt'  # on windows: .replace(':', '-')
 
     run = wandb.init(id=id)
     name = run.name
-    if not file.exists():
-        run.use_artifact(f'rosasco/{project}/{ckpt}', type='model').download(f'artifacts/{ckpt}/')
+    run.use_artifact(f'rosasco/{project}/{ckpt}', type='model').download(f'artifacts/{ckpt}/')
     wandb.finish(exit_code=0)
 
-    model = Model.load_from_checkpoint(str(file))
+    model = Model.load_from_checkpoint(str(file), config=Config.Model)
 
-    wandb_logger = WandbLogger(name='eval_shapenet', project='pcr', log_model='all')
-    wandb_logger.watch(model)
-
-
+    logger = []
+    # wandb_logger = WandbLogger(name='eval_shapenet', project='pcr', log_model='all')
+    # wandb_logger.watch(model)
+    # logger.append(wandb_logger)
 
     checkpoint_callback = ModelCheckpoint(
         monitor='valid/f1',
@@ -45,7 +44,7 @@ def main():
                          precision=32,
                          gpus=1,
                          log_every_n_steps=Config.Eval.log_metrics_every,
-                         logger=[wandb_logger],
+                         logger=logger,
                          gradient_clip_val=Config.Train.clip_value,
                          gradient_clip_algorithm='value',
                          callbacks=[GPUStatsMonitor(),

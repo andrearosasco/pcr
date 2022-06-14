@@ -52,6 +52,7 @@ class BackBone(nn.Module):
             generator(global_size, 1),
             generator(global_size, 1),
         ]))
+        pass
 
     def _init_weights(self, m):
         if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):

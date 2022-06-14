@@ -1,13 +1,18 @@
 from abc import ABC
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 import torch
+from open3d.cpu.pybind.visualization import draw_geometries
 
-from utils.metrics import chamfer_batch
+from datasets.PCNDataset import PCN
+from utils.chamfer import ChamferDistanceL2, ChamferDistanceL1
+from utils.metrics import chamfer_batch, chamfer_batch_pc
 from utils.reproducibility import get_init_fn, get_generator
 from utils.sgdiff import DifferentiableSGD
 from .Backbone import BackBone
+from .Decoder2 import Decoder as Decoder2
 from .Decoder import Decoder
 from .ImplicitFunction import ImplicitFunction
 
@@ -27,7 +32,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from datasets.ShapeNetPOVDepth import ShapeNet as Dataset
 
-from utils.misc import create_3d_grid, check_mesh_contains, sample_point_cloud, read_mesh_debug, read_mesh
+from utils.misc import create_3d_grid, check_mesh_contains, sample_point_cloud, read_mesh_debug, read_mesh, \
+    sample_point_cloud_pc, check_occupancy
 import open3d as o3d
 import pytorch_lightning as pl
 import wandb
@@ -40,6 +46,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         self.backbone = BackBone(config)
         self.sdf = ImplicitFunction(config)
         self.decoder = Decoder(self.sdf)
+        self.train_decoder = Decoder2(self.sdf)
 
         # self.apply(self._init_weights)
         for parameter in self.backbone.transformer.parameters():
@@ -54,10 +61,17 @@ class PCRNetwork(pl.LightningModule, ABC):
         self.avg_chamfer = MeanMetric()
 
         self.pre_adpt_chamfer = MeanMetric()
+        self.train_cd_l1 = MeanMetric()
 
         self.training_set, self.valid_set = None, None
 
         self.rt_setup = False
+
+        self.cls_count = defaultdict(lambda: 0)
+        self.cls_cd = defaultdict(lambda: 0)
+
+        self.cd = []
+        self.labels = []
 
     # def _init_weights(self, m):
     #     if isinstance(m, nn.LayerNorm) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.BatchNorm1d):
@@ -70,9 +84,11 @@ class PCRNetwork(pl.LightningModule, ABC):
     #             nn.init.constant_(m.bias, 0)
 
     def prepare_data(self):
-        self.training_set = Dataset(Config, mode=f"{Config.Data.mode}/train")
-        self.valid_set = Dataset(Config, mode=f"{Config.Data.mode}/valid")
+        # self.training_set = Dataset(Config, mode=f"{Config.Data.mode}/train")
+        # self.valid_set = Dataset(Config, mode=f"{Config.Data.mode}/valid")
 
+        self.training_set = PCN(subset="train")
+        self.valid_set = PCN(subset="val")
         print(len(self.valid_set))
 
     def train_dataloader(self):
@@ -126,20 +142,9 @@ class PCRNetwork(pl.LightningModule, ABC):
         self.f1.reset(), self.avg_loss.reset()
 
     def training_step(self, batch, batch_idx):
-        label, partial, _, samples, occupancy = batch
-
-        # for p, s, o in zip(partial.cpu().numpy(), samples.cpu().numpy(), occupancy.cpu().numpy()):
-            # aux1 = PointCloud(points=Vector3dVector(p))
-            # aux1.paint_uniform_color([0, 0, 1])
-            # aux2 = PointCloud(points=Vector3dVector(s[o.astype(bool)]))
-            # aux2.paint_uniform_color([0, 1, 0])
-            # aux3 = PointCloud(points=Vector3dVector(s[~o.astype(bool)]))
-            # aux3.paint_uniform_color([1, 0, 0])
-            #
-            # draw_geometries([aux1, aux2, aux3, o3d.geometry.TriangleMesh.create_coordinate_frame()])
+        _, _, (partial, ground_truth) = batch
 
         fast_weights, _ = self.backbone(partial)
-
         ### Adaptation
         if Config.Train.adaptation:
             adaptation_steps = 10
@@ -150,66 +155,100 @@ class PCRNetwork(pl.LightningModule, ABC):
                 optim = DifferentiableSGD(sum(fast_weights, []), lr=0.1, momentum=0.9)  # the sum flatten the list of list
 
                 out = self.sdf(partial, fast_weights)
+                # The loss function also computes the sigmoid
                 loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,), device=Config.General.device))
 
                 loss.backward(inputs=sum(fast_weights, []), retain_graph=True)
                 fast_weights = optim.step()
                 fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in range(0, 12, 3)]
 
-        out = self.sdf(samples, fast_weights)
+        if Config.Train.chamfer:
+            pred = self.train_decoder(fast_weights)
+            loss = ChamferDistanceL2()(pred, ground_truth)
 
-        loss = F.binary_cross_entropy_with_logits(out, occupancy.unsqueeze(-1))
-        return {'loss': loss, 'out': out.detach().cpu(), 'target': occupancy.detach().cpu()}
+            return {'loss': loss, 'pred': pred, 'target': ground_truth}
+
+        else:
+            # mod_samples = self.decoder(fast_weights)
+
+            samples, target = sample_point_cloud_pc(ground_truth, n_points=Config.Data.implicit_input_dimension,
+                                                       dist=Config.Data.dist,
+                                                       noise_rate=Config.Data.noise_rate,
+                                                       tolerance=Config.Data.tolerance)
+            target = target.float()
+            # mod_target = check_occupancy(ground_truth, mod_samples, voxel_size=Config.Data.tolerance)
+            # mod_target = mod_target.float()
+
+            # Rebalancing
+            # p = (torch.sum(mod_target, dim=1) / mod_target.shape[1]).mean()
+            # n = 1 - p
+            #
+            # reb_samples, reb_target = sample_point_cloud_pc(ground_truth, n_points=Config.Data.implicit_input_dimension,
+            #                                         dist=[p*0.2, p*0.8, n],
+            #                                         noise_rate=Config.Data.noise_rate,
+            #                                         tolerance=Config.Data.tolerance)
+
+            # samples = torch.cat([mod_samples, reb_samples], dim=1)
+            # target = torch.cat([mod_target, reb_target], dim=1)
+
+            out = self.sdf(samples, fast_weights)
+            pred = torch.sigmoid(out.detach()).cpu()
+
+            loss = F.binary_cross_entropy_with_logits(out, target.unsqueeze(-1))
+            target = target.unsqueeze(-1).int()
+
+            # if torch.sum(torch.prod(ground_truth == 0.0, dim=2) != 0, dim=1).item():
+            #     print()
+            #     pass
+
+            # for p, l, g in zip(samples, target, ground_truth):
+            #     aux1 = PointCloud(points=Vector3dVector(p[l.bool().squeeze()].cpu().numpy()))
+            #     aux1.paint_uniform_color([0, 1, 0])
+            #     aux2 = PointCloud(points=Vector3dVector(p[~l.bool().squeeze()].cpu().numpy()))
+            #     aux2.paint_uniform_color([1, 0, 0])
+            #     aux3 = PointCloud(points=Vector3dVector(g.cpu().numpy()))
+            #     aux3.paint_uniform_color([0, 0, 1])
+            #
+            #     o3d.pybind.visualization.draw_geometries([aux1, aux3])
+            #     o3d.pybind.visualization.draw_geometries([aux2, aux3])
+            #     o3d.pybind.visualization.draw_geometries([aux1, aux2])
+            #     break
+
+            return {'loss': loss, 'pred': pred.detach().cpu(), 'target': target.detach().cpu()}
 
     @torch.no_grad()
     def training_step_end(self, output):
-        pred, trgt = torch.sigmoid(output['out']).detach().cpu(), output['target'].unsqueeze(-1).int().detach().cpu()
+        pred, trgt = output['pred'], output['target']
 
         # This log the metrics on the current batch and accumulate it in the average
-        self.log('train/accuracy', self.accuracy(pred, trgt))
-        self.log('train/precision', self.precision_(pred, trgt))
-        self.log('train/recall', self.recall(pred, trgt))
-        self.log('train/f1', self.f1(pred, trgt))
+        if Config.Train.chamfer:
+            cd = ChamferDistanceL1()(pred, trgt)
+            self.log('train/chamfer', self.train_cd_l1(cd))
+            output['pred'], output['target'] = pred.cpu(), trgt.cpu()
+        else:
+            self.log('train/accuracy', self.accuracy(pred, trgt))
+            self.log('train/precision', self.precision_(pred, trgt))
+            self.log('train/recall', self.recall(pred, trgt))
+            self.log('train/f1', self.f1(pred, trgt))
+
         self.log('train/loss', self.avg_loss(output['loss'].detach().cpu()))
-        pass
 
     def on_validation_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
         self.f1.reset(), self.avg_loss.reset(), self.avg_chamfer.reset(), self.pre_adpt_chamfer.reset()
 
     def validation_step(self, batch, batch_idx):
-        label, partial, meshes, _, _ = batch
-
-        path, rotation, mean, var, offset = meshes
-
-        meshes_list = []
-        for p, r, m, v, o in zip(path, rotation, mean, var, offset):
-            dir_path = Path(p)
-
-            mesh = read_mesh_debug(dir_path)
-
-            mesh = mesh.rotate(r.cpu().numpy()).translate(-m.cpu().numpy())\
-                .scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0]).translate(o.cpu().numpy())
-            meshes_list.append(mesh)
+        class_id, label, (partial, ground_truth) = batch
 
         # The sampling with "sample_point_cloud" simulate the sampling used during training
         # This is useful as we always get ground truths sampling on the meshes but it doesn't reflect
         #   how the algorithm will work after deployment
-        samples2, occupancy2 = [], []
-        for mesh in meshes_list:
-            s, o = sample_point_cloud(mesh, n_points=Config.Data.implicit_input_dimension, dist=Config.Data.dist,
-                                      noise_rate=Config.Data.noise_rate, tolerance=Config.Data.tolerance)
-            samples2.append(s), occupancy2.append(o)
-        samples2 = torch.tensor(np.array(samples2)).float().to(Config.General.device)
-        occupancy2 = torch.tensor(occupancy2, dtype=torch.float).unsqueeze(-1).to(Config.General.device)
 
-        one_hot = None
-        if Config.Model.use_object_id:
-            one_hot = torch.zeros((label.shape[0], Config.Data.n_classes), dtype=torch.float).to(label.device)
-            one_hot[torch.arange(0, label.shape[0]), label] = 1.
+        samples2, occupancy2 = sample_point_cloud_pc(ground_truth, n_points=Config.Data.implicit_input_dimension, dist=Config.Data.dist,
+                                  noise_rate=Config.Data.noise_rate, tolerance=Config.Data.tolerance)
 
         ############# INFERENCE #############
-        fast_weights, _ = self.backbone(partial, object_id=one_hot)
+        fast_weights, _ = self.backbone(partial)
         pc1_pre = self.decoder(fast_weights)
 
         ### Adaptation
@@ -234,25 +273,45 @@ class PCRNetwork(pl.LightningModule, ABC):
         pc1 = self.decoder(fast_weights)
         out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
 
-        return {'pc1': pc1, 'pre_pc': pc1_pre, 'out2': out2.detach().cpu(),
+        # target = check_occupancy(ground_truth, pc1, voxel_size=Config.Data.tolerance)
+
+        # if label[0] == '545672cd928e85e7d706ecb3379aa341':
+        #     print()
+        #     pass
+        # for p, l, g in zip(pc1, target, ground_truth):
+        #     self.cls_count[class_id[0]] += 1
+        #     cd = chamfer_batch_pc(p.unsqueeze(0), g.unsqueeze(0)).item()
+        #     self.cls_cd[class_id[0]] += torch.sum(torch.prod(ground_truth == 0.0, dim=2) != 0, dim=1).item()  # cd
+            # if torch.sum(torch.sum(ground_truth == 0.0, dim=2) != 0, dim=1).item() != 0:
+            #     print()
+            #     pass
+
+            # self.cd.append(cd)
+            # self.labels.append(label)
+            # aux1 = PointCloud(points=Vector3dVector(p[l.bool().squeeze()].cpu().numpy()))
+            # aux1.paint_uniform_color([0, 1, 0])
+            # aux2 = PointCloud(points=Vector3dVector(p[~l.bool().squeeze()].cpu().numpy()))
+            # aux2.paint_uniform_color([1, 0, 0])
+            # aux3 = PointCloud(points=Vector3dVector(g.cpu().numpy()))
+            # aux3.paint_uniform_color([0, 0, 1])
+            #
+            # o3d.pybind.visualization.draw_geometries([aux1, aux2, aux3])
+
+        return {'pc1': pc1, 'pre_pc': pc1_pre, 'out2': out2.detach().squeeze(2).cpu(),
                 'target2': occupancy2.detach().cpu(), 'samples2': samples2,
-                'mesh': meshes_list, 'partial': partial.detach().cpu(), 'label': label.detach().cpu()}
+                'partial': partial.detach().cpu(), 'ground_truth': ground_truth}
 
     def validation_step_end(self, output):
-        mesh = output['mesh']
-
         pred, trgt = output['out2'], output['target2'].int()
 
         self.accuracy(pred, trgt), self.precision_(pred, trgt)
-        self.avg_chamfer(chamfer_batch(output['pc1'], mesh))
-        self.pre_adpt_chamfer(chamfer_batch(output['pre_pc'], mesh))
+        self.avg_chamfer(chamfer_batch_pc(output['pc1'], output['ground_truth']))
+        self.pre_adpt_chamfer(chamfer_batch_pc(output['pre_pc'], output['ground_truth']))
         self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
 
         return output
-        pass
 
     def validation_epoch_end(self, output):
-        pass
         self.log('valid/accuracy', self.accuracy.compute())
         self.log('valid/precision', self.precision_.compute())
         self.log('valid/recall', self.recall.compute())
@@ -267,7 +326,6 @@ class PCRNetwork(pl.LightningModule, ABC):
 
         for idx, name in zip(idxs, ['random', 'fixed']):
             batch = output[idx]
-            mesh = batch['mesh'][-1]
 
             out, trgt, samples = batch['out2'][-1], batch['target2'][-1], batch['samples2'][-1]
 
@@ -289,10 +347,8 @@ class PCRNetwork(pl.LightningModule, ABC):
             recall_pc = torch.cat((samples.cpu(), colors), dim=-1).detach().cpu().numpy()
             recall_pc = recall_pc[(trgt == 1.).squeeze()]
 
-            complete = mesh
 
-            complete = complete.sample_points_uniformly(10000)
-            complete = np.array(complete.points)
+            complete = batch['ground_truth'][-1].detach().cpu().numpy()
 
             partial = torch.cat([batch['partial'][-1], torch.tensor([[255., 165. , 0.]]).tile(batch['partial'][-1].shape[0], 1)],
                       dim=-1).detach().cpu().numpy()

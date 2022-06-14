@@ -81,7 +81,7 @@ class Config(BaseConfig):
 
 
 if __name__ == '__main__':
-    from eval import eval_ycb
+    from eval_ import eval_ycb
     with Path('configs/__init__.py').open('w+') as f:
         f.writelines(['from .eval_ycb_config import Config'])
     eval_ycb.main()

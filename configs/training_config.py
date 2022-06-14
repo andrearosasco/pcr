@@ -18,7 +18,7 @@ class Config(BaseConfig):
         device = 'cuda'
         visible_dev = '0'
         seed = 1
-        num_workers = 20
+        num_workers = 30
         git = git_hash()
 
     class Train:
@@ -29,6 +29,8 @@ class Config(BaseConfig):
         optimizer = torch.optim.Adam
         loss = torch.nn.BCEWithLogitsLoss
         loss_reduction = "mean"  # "none"
+
+        adaptation = False
 
         mb_size = 32
 

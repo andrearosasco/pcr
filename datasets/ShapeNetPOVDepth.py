@@ -98,7 +98,6 @@ class ShapeNet(data.Dataset):
             viewer.destroy_window()
             del control
             del viewer
-            gc.collect()
 
             depth = np.array(depth)
 
@@ -126,17 +125,19 @@ class ShapeNet(data.Dataset):
 
             partial_pcd = partial_pcd / (var * 2)
 
+            offset = np.zeros([3])
             if self.offset:
                 offset = 0.5 - partial_pcd[np.argmax(partial_pcd[..., 2])][..., 2]
-                partial_pcd = partial_pcd + np.array([0, 0, offset])
+                offset = np.array([0, 0, offset])
+                partial_pcd = partial_pcd + offset
 
             # Move the mesh so that it matches the partial point cloud position
             # (the [0, 0, 1] is to compensate for the fact that the partial pc is in the camera frame)
             mesh.translate(-mean)  #  + [0, 0, dist] (?)
             mesh.scale(1 / (var * 2), center=[0, 0, 0])
 
-            if self.offset
-                mesh.translate(np.array([0, 0, offset]))
+            if self.offset:
+                mesh.translate(offset)
 
             # Make sure that the mesh normalized with the partial normalization is in the input space
 
@@ -186,10 +187,9 @@ class ShapeNet(data.Dataset):
         # print('rotation', type(rotation))
         # print('mean', type(mean))
         # print('var', type(var))
-        return label, partial_pcd, [str(dir_path), rotation, mean, var], samples, occupancy
+        return label, partial_pcd, [str(dir_path), rotation, mean, var, offset], samples, occupancy
 
     def __len__(self):
-        # return 640
         return int(self.n_samples)
 
 if __name__ == "__main__":

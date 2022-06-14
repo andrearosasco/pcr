@@ -3,6 +3,8 @@ import torch
 from sklearn.neighbors import KDTree
 import numpy as np
 
+from utils.chamfer import ChamferDistanceL1, ChamferDistanceL2
+
 
 def chamfer_batch(predictions, meshes):
 
@@ -11,7 +13,16 @@ def chamfer_batch(predictions, meshes):
         ground_truth[i] = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0)
 
     d = chamfer_distance(predictions, ground_truth)
+    d2 = ChamferDistanceL1()(predictions, ground_truth)
     return d.mean().detach().cpu()
+
+def chamfer_batch_pc(predictions, ground_truth):
+
+    # d2 = ChamferDistanceL2()(predictions, ground_truth)
+    d1 = ChamferDistanceL1(ignore_zeros=True)(predictions, ground_truth)
+    # d3 = chamfer_distance(predictions, ground_truth).mean()
+
+    return d1
 
 
 def chamfer_distance(points1, points2, give_id=False):
@@ -55,6 +66,9 @@ def chamfer_distance(points1, points2, give_id=False):
     # Compute chamfer distance
     chamfer1 = (points1 - points_12).pow(2).sum(2).mean(1)
     chamfer2 = (points2 - points_21).pow(2).sum(2).mean(1)
+    # chamfer1 = torch.sqrt(torch.sqrt((points1 - points_12).pow(2)).sum(2)).mean(1)
+    # chamfer2 = torch.sqrt(torch.sqrt((points2 - points_21).pow(2)).sum(2)).mean(1)
+
 
     # Take sum
     chamfer = chamfer1 + chamfer2

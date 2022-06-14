@@ -81,7 +81,7 @@ class Config(BaseConfig):
 
 
 if __name__ == '__main__':
-    from eval import eval_shapenet
+    from eval_ import eval_shapenet
     with Path('configs/__init__.py').open('w+') as f:
         f.writelines(['from .eval_shapenet_config import Config'])
     eval_shapenet.main()

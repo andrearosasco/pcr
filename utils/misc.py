@@ -1,22 +1,13 @@
-import threading
-
+import copy
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import os
-from collections import abc
-import tqdm
-from torch import cdist
 
 
 try:
-    from open3d.cuda.pybind.geometry import PointCloud
+    from open3d.cuda.pybind.geometry import PointCloud, VoxelGrid
     from open3d.cuda.pybind.utility import Vector3dVector, Vector3iVector
 except (ModuleNotFoundError, ImportError):
-    from open3d.cpu.pybind.geometry import PointCloud
+    from open3d.cpu.pybind.geometry import PointCloud, VoxelGrid
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
     # from open3d.open3d.geometry import PointCloud
     # from open3d.open3d.utility import Vector3dVector, Vector3iVector
@@ -111,6 +102,60 @@ def sample_point_cloud(mesh, n_points=8192, dist=None, noise_rate=0.1, tolerance
         labels = [False] * (n_uniform + n_noise) + [True] * n_mesh
 
     return points, labels
+
+
+@torch.no_grad()
+def sample_point_cloud_pc(pc, n_points=8192, dist=None, noise_rate=0.1, tolerance=0.01, seed=1234):
+    """
+    http://www.open3d.org/docs/latest/tutorial/geometry/distance_queries.html
+    Produces input for implicit function
+    :param mesh: Open3D mesh
+    :param noise_rate: rate of gaussian noise added to the point sampled from the mesh
+    :param percentage_sampled: percentage of point that must be sampled uniform
+    :param total: total number of points that must be returned
+    :param tollerance: maximum distance from mesh for a point to be considered 1.
+    :param mode: str, one in ["unsigned", "signed", "occupancy"]
+    :return: points (N, 3), occupancies (N,)
+    """
+    assert sum(dist) == 1.0
+
+    n_uniform = int(n_points * dist[0])
+    n_noise = int(n_points * dist[1])
+    n_surface = n_points - (n_uniform + n_noise)
+
+    points_uniform = torch.rand(pc.shape[0], n_uniform, 3, device=pc.device) - 0.5
+
+    idx = torch.tensor(np.random.choice(pc.shape[1], n_noise, replace=True if pc.shape[1] < n_noise else False), device=pc.device, dtype=torch.long)
+    points_noisy = pc[:, idx, :] + torch.normal(0, noise_rate, (pc.shape[0], n_noise, 3), device=pc.device)
+
+    idx = torch.tensor(np.random.choice(pc.shape[1], n_surface, replace=True if pc.shape[1] < n_noise else False), device=pc.device, dtype=torch.long)
+    points_surface = copy.deepcopy(pc[:, idx, :])
+
+    points = torch.cat([points_uniform, points_noisy, points_surface], dim=1)
+
+    if tolerance > 0:
+        labels = check_occupancy(pc, points, tolerance) # 0.002
+
+    elif tolerance == 0:
+        labels = [False] * (n_uniform + n_noise) + [True] * n_surface
+        labels = torch.tensor(labels, dtype=torch.float, device=pc.device).tile(pc.shape[0], 1)
+
+    return points, labels
+
+
+def check_occupancy(reference, pc, voxel_size):
+    pc = pc.clip(min=-0.5 + 1e-6, max=0.5 - 1e-6)
+    side = int(1 / voxel_size)
+
+    ref_idxs = ((reference + 0.5) / voxel_size).long()
+    ref_grid = torch.zeros([reference.shape[0], side, side, side], dtype=torch.bool, device=pc.device)
+    ref_grid[torch.arange(reference.shape[0]).reshape(-1, 1), ref_idxs[..., 0], ref_idxs[..., 1], ref_idxs[..., 2]] = True
+
+    pc_idxs = ((pc + 0.5) / voxel_size).long()
+
+    res = ref_grid[torch.arange(reference.shape[0]).reshape(-1, 1), pc_idxs[..., 0], pc_idxs[..., 1], pc_idxs[..., 2]]
+
+    return res
 
 
 def create_3d_grid(min_value=-0.5, max_value=0.5, step=0.04, batch_size=1):

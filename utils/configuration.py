@@ -1,9 +1,7 @@
 import abc
-import copy
 import importlib
 import json
-from abc import ABC, abstractmethod
-import __main__
+from abc import abstractmethod
 
 class ABCGetAttrMeta(abc.ABCMeta):
     cfg = None
