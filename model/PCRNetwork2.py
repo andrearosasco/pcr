@@ -90,9 +90,6 @@ class PCRNetwork(pl.LightningModule, ABC):
 
         self.training_set = PCN(subset="train")
         self.valid_set = PCN(subset="val")
-
-        # self.training_set = DebugDataset(subset="train")
-        # self.valid_set = DebugDataset(subset="worst")
         print(len(self.valid_set))
 
     def train_dataloader(self):
@@ -121,15 +118,6 @@ class PCRNetwork(pl.LightningModule, ABC):
         return dl
 
     def forward(self, partial, object_id=None, step=0.01):
-        # if not self.rt_setup:
-        #     self.rt_setup = True
-        #     x = torch.ones((1, 2024, 3)).cuda()
-        # #     # self.backbone_tr = torch2trt(self.backbone, [x], use_onnx=True)
-        #     torch.onnx.export(self.backbone, x, 'pcr.onnx', input_names=['input'], output_names=['output'],
-        #                      )
-            # y = create_3d_grid(batch_size=partial.shape[0], step=step).to(TrainConfig.device)
-            # self.sdf_tr = torch2trt(self.sdf, [y])
-
         samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(Config.General.device)
 
         fast_weights, _ = self.backbone(partial)
@@ -205,17 +193,17 @@ class PCRNetwork(pl.LightningModule, ABC):
             #     print()
             #     pass
 
-            for p, l, g in zip(samples, target, ground_truth):
-                aux1 = PointCloud(points=Vector3dVector(p[l.bool().squeeze()].cpu().numpy()))
-                aux1.paint_uniform_color([0, 1, 0])
-                aux2 = PointCloud(points=Vector3dVector(p[~l.bool().squeeze()].cpu().numpy()))
-                aux2.paint_uniform_color([1, 0, 0])
-                aux3 = PointCloud(points=Vector3dVector(g.cpu().numpy()))
-                aux3.paint_uniform_color([0, 0, 1])
-
-                o3d.pybind.visualization.draw_geometries([aux1, aux3])
-                o3d.pybind.visualization.draw_geometries([aux2, aux3])
-                o3d.pybind.visualization.draw_geometries([aux1, aux2])
+            # for p, l, g in zip(samples, target, ground_truth):
+            #     aux1 = PointCloud(points=Vector3dVector(p[l.bool().squeeze()].cpu().numpy()))
+            #     aux1.paint_uniform_color([0, 1, 0])
+            #     aux2 = PointCloud(points=Vector3dVector(p[~l.bool().squeeze()].cpu().numpy()))
+            #     aux2.paint_uniform_color([1, 0, 0])
+            #     aux3 = PointCloud(points=Vector3dVector(g.cpu().numpy()))
+            #     aux3.paint_uniform_color([0, 0, 1])
+            #
+            #     o3d.pybind.visualization.draw_geometries([aux1, aux3])
+            #     o3d.pybind.visualization.draw_geometries([aux2, aux3])
+            #     o3d.pybind.visualization.draw_geometries([aux1, aux2])
 
             return {'loss': loss, 'pred': pred.detach().cpu(), 'target': target.detach().cpu()}
 
@@ -283,7 +271,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
 
 
-        target = check_occupancy(ground_truth, pc1, voxel_size=Config.Data.tolerance)
+        # target = check_occupancy(ground_truth, pc1, voxel_size=Config.Data.tolerance)
 
         # for p, g, c, l in zip(pc1, ground_truth, class_id, label):
         #     self.cls_count[f'{c}/{l}'] += 1

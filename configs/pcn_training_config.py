@@ -52,7 +52,7 @@ class Config(BaseConfig):
         implicit_input_dimension = 8192
         dist = [0.1, 0.4, 0.5]
         noise_rate = 0.1
-        tolerance = 0.0
+        tolerance = 0.01
         n_classes = 55
         # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
         # in 0, 0, 0
