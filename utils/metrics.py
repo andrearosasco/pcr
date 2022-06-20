@@ -3,12 +3,13 @@ import torch
 from sklearn.neighbors import KDTree
 import numpy as np
 
+from configs import Config
 from utils.chamfer import ChamferDistanceL1, ChamferDistanceL2
 
 
 def chamfer_batch(predictions, meshes):
 
-    ground_truth = torch.zeros_like(predictions)
+    ground_truth = torch.zeros([1, 8192, 3], device=Config.General.device)
     for i, mesh in enumerate(meshes):
         ground_truth[i] = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0)
 
@@ -19,7 +20,7 @@ def chamfer_batch(predictions, meshes):
 def chamfer_batch_pc(predictions, ground_truth):
 
     # d2 = ChamferDistanceL2()(predictions, ground_truth)
-    d1 = ChamferDistanceL1()(predictions, ground_truth)
+    d1 = ChamferDistanceL1(ignore_zeros=True)(predictions, ground_truth)
     # d3 = chamfer_distance(predictions, ground_truth).mean()
 
     return d1

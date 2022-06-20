@@ -120,3 +120,10 @@ class PCN(data.Dataset):
 
     def __len__(self):
         return len(self.file_list)
+
+if __name__ == '__main__':
+
+    dataset = PCN(subset='train')
+
+    for d in dataset:
+        print()

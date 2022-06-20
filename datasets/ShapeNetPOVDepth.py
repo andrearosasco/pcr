@@ -58,12 +58,12 @@ class ShapeNet(data.Dataset):
             dir_path = self.data_root / 'data' / self.samples[idx].strip()
             label = int(self.labels_map[dir_path.parent.name])
 
-            # v = np.load(str(dir_path / 'models/model_vertices.npy'))
-            # t = np.load(str(dir_path / 'models/model_triangles.npy'))
-            # mesh = o3d.geometry.TriangleMesh(Vector3dVector(v),
-            #                                  Vector3iVector(t))
+            v = np.load(str(dir_path / 'models/model_vertices.npy'))
+            t = np.load(str(dir_path / 'models/model_triangles.npy'))
+            mesh = o3d.geometry.TriangleMesh(Vector3dVector(v),
+                                             Vector3iVector(t))
 
-            mesh = read_mesh_debug(dir_path)
+            # mesh = read_mesh_debug(dir_path)
 
             rotation = R.random().as_matrix()
             mesh = mesh.rotate(rotation)
@@ -115,9 +115,10 @@ class ShapeNet(data.Dataset):
             old_partial_pcd = np.array(partial_pcd.points)
 
             # Normalize the partial point cloud (all we could do at test time)
-            mean = np.mean(old_partial_pcd, axis=0)
+            complete = np.array(mesh.sample_points_uniformly(8192).points)
+            mean = np.mean(complete, axis=0)
             partial_pcd = old_partial_pcd - mean
-            var = np.sqrt(np.max(np.sum(partial_pcd ** 2, axis=1)))
+            var = np.sqrt(np.max(np.sum((complete - mean) ** 2, axis=1)))
 
             if var == 0:
                 idx = np.random.randint(low=0, high=len(self))

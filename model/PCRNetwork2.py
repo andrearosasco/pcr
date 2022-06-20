@@ -33,8 +33,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from datasets.ShapeNetPOVDepth import ShapeNet as Dataset
 
-from utils.misc import create_3d_grid, check_mesh_contains, sample_point_cloud, read_mesh_debug, read_mesh, \
-    sample_point_cloud_pc, check_occupancy
+from utils.misc import create_3d_grid, sample_point_cloud_pc
 import open3d as o3d
 import pytorch_lightning as pl
 import wandb
@@ -89,7 +88,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         # self.valid_set = Dataset(Config, mode=f"{Config.Data.mode}/valid")
 
         self.training_set = PCN(subset="train")
-        self.valid_set = PCN(subset="val")
+        self.valid_set = PCN(subset="test")
         print(len(self.valid_set))
 
     def train_dataloader(self):
@@ -108,7 +107,7 @@ class PCRNetwork(pl.LightningModule, ABC):
     def val_dataloader(self):
         dl = DataLoader(
             self.valid_set,
-            shuffle=False,
+            shuffle=True,
             batch_size=Config.Eval.mb_size,
             drop_last=False,
             num_workers=Config.General.num_workers,
@@ -152,7 +151,10 @@ class PCRNetwork(pl.LightningModule, ABC):
 
                 loss.backward(inputs=sum(fast_weights, []), retain_graph=True)
                 fast_weights = optim.step()
-                fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in range(0, 12, 3)]
+                fast_weights = [[fast_weights[i].to(Config.General.device),
+                                 fast_weights[i + 1].to(Config.General.device),
+                                 fast_weights[i + 2].to(Config.General.device)]
+                                for i in range(0, 3 * (Config.Model.depth + 2), 3)]
 
         if Config.Train.chamfer:
             pred = self.train_decoder(fast_weights)
@@ -210,6 +212,7 @@ class PCRNetwork(pl.LightningModule, ABC):
     @torch.no_grad()
     def training_step_end(self, output):
         pred, trgt = output['pred'], output['target']
+        pred = torch.nan_to_num(pred)
 
         # This log the metrics on the current batch and accumulate it in the average
         if Config.Train.chamfer:
@@ -222,7 +225,7 @@ class PCRNetwork(pl.LightningModule, ABC):
             self.log('train/recall', self.recall(pred, trgt))
             self.log('train/f1', self.f1(pred, trgt))
 
-        self.log('train/loss', self.avg_loss(output['loss'].detach().cpu()))
+        self.log('train/loss', self.avg_loss(torch.nan_to_num(output['loss'].detach().cpu(), nan=1)))
 
     def on_validation_epoch_start(self):
         self.accuracy.reset(), self.precision_.reset(), self.recall.reset()
@@ -259,18 +262,16 @@ class PCRNetwork(pl.LightningModule, ABC):
 
                     loss.backward(inputs=sum(fast_weights, []), retain_graph=True)
                     fast_weights = optim.step()
-                    fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in range(0, 12, 3)]
+                    fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in range(0, 3 * (Config.Model.depth + 2), 3)]
 
         pc1 = self.decoder(fast_weights)
         # samples1 = create_3d_grid(batch_size=partial.shape[0],
         #                           step=Config.Eval.grid_res_step).to(Config.General.device)
         # prob = torch.sigmoid(self.sdf(samples1, fast_weights))
-        for p, g in zip(pc1, ground_truth):
-            self.cd.append(chamfer_batch_pc(p.unsqueeze(0), g.unsqueeze(0)).item())
+        # for p, g in zip(pc1, ground_truth):
+        #     self.cd.append(chamfer_batch_pc(p.unsqueeze(0), g.unsqueeze(0)).item())
 
         out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
-
-
         # target = check_occupancy(ground_truth, pc1, voxel_size=Config.Data.tolerance)
 
         # for p, g, c, l in zip(pc1, ground_truth, class_id, label):
@@ -303,18 +304,18 @@ class PCRNetwork(pl.LightningModule, ABC):
             # print()
             # o3d.pybind.visualization.draw_geometries([aux4])
             # o3d.pybind.visualization.draw_geometries([aux1, aux2, aux3, aux4])
-
         return {'pc1': pc1, 'pre_pc': pc1_pre, 'out2': out2.detach().squeeze(2).cpu(),
                 'target2': occupancy2.detach().cpu(), 'samples2': samples2,
                 'partial': partial.detach().cpu(), 'ground_truth': ground_truth}
 
     def validation_step_end(self, output):
-        # pred, trgt = output['out2'], output['target2'].int()
+        pred, trgt = output['out2'], output['target2'].int()
+        pred = torch.nan_to_num(pred)
         #
-        # self.accuracy(pred, trgt), self.precision_(pred, trgt)
-        # self.avg_chamfer(chamfer_batch_pc(output['pc1'], output['ground_truth']))
-        # self.pre_adpt_chamfer(chamfer_batch_pc(output['pre_pc'], output['ground_truth']))
-        # self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
+        self.accuracy(pred, trgt), self.precision_(pred, trgt)
+        self.avg_chamfer(chamfer_batch_pc(output['pc1'], output['ground_truth']))
+        self.pre_adpt_chamfer(chamfer_batch_pc(output['pre_pc'], output['ground_truth']))
+        self.recall(pred, trgt), self.f1(pred, trgt), self.avg_loss(F.binary_cross_entropy(pred, trgt.float()))
 
         return output
 

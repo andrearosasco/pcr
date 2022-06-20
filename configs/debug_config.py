@@ -18,7 +18,7 @@ class Config(BaseConfig):
         device = 'cuda'
         visible_dev = '0'
         seed = 1
-        num_workers = 8
+        num_workers = 0
         git = git_hash()
 
     class Train:
@@ -36,7 +36,7 @@ class Config(BaseConfig):
         mb_size = 1
 
     class Eval:
-        wandb = True
+        wandb = False
         log_metrics_every = 100
         val_every = 1
 
@@ -46,7 +46,7 @@ class Config(BaseConfig):
         mb_size = 1
 
     class Data:
-        dataset_path = "./data/PCN"
+        dataset_path = "./data/YCB"
         partial_points = 2048  # number of points per input
         multiplier_complete_sampling = 50
         implicit_input_dimension = 8192 * 2
@@ -56,6 +56,8 @@ class Config(BaseConfig):
         n_classes = 55
         # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
         # in 0, 0, 0
+        mode='split'
+        offset=False
 
         class Train:
             mb_size = 1
@@ -86,7 +88,7 @@ class Config(BaseConfig):
 
 
 if __name__ == '__main__':
-    import train2
+    import eval
     with Path('configs/__init__.py').open('w+') as f:
         f.writelines(['from .debug_config import Config'])
-    train2.main()
+    eval.main()

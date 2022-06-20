@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from utils.reproducibility import make_reproducible
 from utils.lightning import SplitProgressBar
 
@@ -26,35 +28,40 @@ def main():
     # wandb.init(settings=wandb.Settings(start_method="fork"))
     model = Model(Config.Model)
 
-    id = 'bjmyg6wm'
-    ckpt = f'model-{id}:v103'
+    id = '2cknh3af'
+    ckpt = f'model-{id}:v400'
     project = 'pcr'
 
     ckpt_path = None
     loggers = []
     resume = False
-    use_checkpoint = True
+    use_checkpoint = False
 
-    if Config.Eval.wandb:
-        if use_checkpoint:
-            run = wandb.init(id=id)
+    if use_checkpoint:
+        ckpt_path = f'artifacts/{ckpt}/model.ckpt' # .replace(':', '-')
+
+        if not Path(ckpt_path).exists():
+            run = wandb.init(id=id, settings=wandb.Settings(start_method="spawn"))
             run.use_artifact(f'rosasco/{project}/{ckpt}', type='model').download(f'artifacts/{ckpt}/')
             wandb.finish(exit_code=0)
 
-            ckpt_path = f'artifacts/{ckpt}/model.ckpt'
-            model = Model.load_from_checkpoint(str(ckpt_path.replace(':', '-')), config=Config.Model)  #
+        model = Model.load_from_checkpoint(ckpt_path, config=Config.Model)  #
 
+    if Config.Eval.wandb:
         if resume:
-            wandb_logger = WandbLogger(project=project, id=id, log_model='all', resume='must', config=Config.to_dict())
+            wandb.init(project=project, id=id, resume='must', config=Config.to_dict(), reinit=True, settings=wandb.Settings(start_method='thread'))
+            wandb_logger = WandbLogger(log_model='all')
 
         else:
-            wandb_logger = WandbLogger(project=project, log_model='all', config=Config.to_dict(), reinit=True)
+            wandb.init(project=project, reinit=True, config=Config.to_dict(),
+                       settings=wandb.Settings(start_method="thread"))
+            wandb_logger = WandbLogger(log_model='all')
 
         wandb_logger.watch(model, log='all', log_freq=Config.Eval.log_metrics_every)
         loggers.append(wandb_logger)
 
     checkpoint_callback = ModelCheckpoint(
-        monitor='valid/f1',
+        monitor='valid/chamfer',
         dirpath='checkpoint',
         filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
         mode='max',
@@ -75,4 +82,4 @@ def main():
                                     checkpoint_callback],
                          )
 
-    trainer.validate(model, ckpt_path=ckpt_path.replace(':', '-'))  # .replace(':', '-')
+    trainer.fit(model, ckpt_path=ckpt_path)  # .replace(':', '-')

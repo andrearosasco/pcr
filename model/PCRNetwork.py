@@ -183,13 +183,17 @@ class PCRNetwork(pl.LightningModule, ABC):
         path, rotation, mean, var, offset = meshes
 
         meshes_list = []
-        for p, r, m, v, o in zip(path, rotation, mean, var, offset):
+        for p, r, m, s, o in zip(path, rotation, mean, var, offset):
             dir_path = Path(p)
 
-            mesh = read_mesh_debug(dir_path)
+            v = np.load(str(dir_path / 'models/model_vertices.npy'))
+            t = np.load(str(dir_path / 'models/model_triangles.npy'))
+            mesh = o3d.geometry.TriangleMesh(Vector3dVector(v),
+                                             Vector3iVector(t))
+            # mesh = read_mesh_debug(dir_path)
 
             mesh = mesh.rotate(r.cpu().numpy()).translate(-m.cpu().numpy())\
-                .scale(1 / (v.cpu().numpy() * 2), center=[0, 0, 0]).translate(o.cpu().numpy())
+                .scale(1 / (s.cpu().numpy() * 2), center=[0, 0, 0]).translate(o.cpu().numpy())
             meshes_list.append(mesh)
 
         # The sampling with "sample_point_cloud" simulate the sampling used during training

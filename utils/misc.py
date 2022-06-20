@@ -158,6 +158,16 @@ def check_occupancy(reference, pc, voxel_size):
     return res
 
 
+def voxel_downsample(pc, voxel_size):
+    side = int(1 / voxel_size)
+
+    idxs = ((pc + 0.5) / voxel_size).long()
+    grid = torch.zeros([pc.shape[0], side, side, side], dtype=torch.bool, device=pc.device)
+    grid[torch.arange(pc.shape[0]).reshape(-1, 1), idxs[..., 0], idxs[..., 1], idxs[..., 2]] = True
+
+    return grid.nonzero()[..., 1:] * voxel_size - (0.5 - voxel_size / 2)
+
+
 def create_3d_grid(min_value=-0.5, max_value=0.5, step=0.04, batch_size=1):
     x_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))
     y_range = torch.FloatTensor(np.arange(min_value, max_value + step, step))

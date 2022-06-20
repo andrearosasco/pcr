@@ -22,7 +22,7 @@ class Config(BaseConfig):
         git = git_hash()
 
     class Train:
-        lr = 1e-5
+        lr = 5e-6
         wd = 0.0
         n_epoch = 1000
         clip_value = 1
@@ -30,7 +30,7 @@ class Config(BaseConfig):
         loss = torch.nn.BCEWithLogitsLoss
         loss_reduction = "mean"  # "none"
 
-        adaptation = False
+        adaptation = True
         chamfer = False
 
         mb_size = 32
@@ -49,7 +49,7 @@ class Config(BaseConfig):
         dataset_path = "./data/PCN"
         partial_points = 2048  # number of points per input
         multiplier_complete_sampling = 50
-        implicit_input_dimension = 8192
+        implicit_input_dimension = 8192 * 2
         dist = [0.1, 0.4, 0.5]
         noise_rate = 0.1
         tolerance = 0.01
@@ -78,7 +78,7 @@ class Config(BaseConfig):
         out_size = 1024
         # Implicit Function
         hidden_dim = 32
-        depth = 2
+        depth = 4
         # Others
         use_object_id = False
         use_deep_weights_generator = False
