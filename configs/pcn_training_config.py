@@ -22,7 +22,7 @@ class Config(BaseConfig):
         git = git_hash()
 
     class Train:
-        lr = 5e-6
+        lr = 1e-5
         wd = 0.0
         n_epoch = 1000
         clip_value = 1
@@ -30,7 +30,7 @@ class Config(BaseConfig):
         loss = torch.nn.BCEWithLogitsLoss
         loss_reduction = "mean"  # "none"
 
-        adaptation = True
+        adaptation = False
         chamfer = False
 
         mb_size = 32
@@ -46,13 +46,13 @@ class Config(BaseConfig):
         mb_size = 32
 
     class Data:
-        dataset_path = "./data/PCN"
+        dataset_path = 'data/MCD'
         partial_points = 2048  # number of points per input
         multiplier_complete_sampling = 50
         implicit_input_dimension = 8192 * 2
         dist = [0.1, 0.4, 0.5]
         noise_rate = 0.1
-        tolerance = 0.01
+        tolerance = 0.005
         n_classes = 55
         # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
         # in 0, 0, 0
@@ -78,26 +78,16 @@ class Config(BaseConfig):
         out_size = 1024
         # Implicit Function
         hidden_dim = 32
-        depth = 4
+        depth = 2
         # Others
         use_object_id = False
         use_deep_weights_generator = False
         assert divmod(embed_dim, num_heads)[1] == 0
 
-
-# import sys
-#
-# def trace(frame, event, arg):
-#     if frame.f_code.co_filename[:4] != '/opt' and frame.f_code.co_filename[:1] != '<':
-#         print("%s, %s:%d" % (event, frame.f_code.co_filename, frame.f_lineno))
-#     return trace
-#
-# sys.settrace(trace)
-
 if __name__ == '__main__':
-    import train2
     with Path('configs/__init__.py').open('w+') as f:
         f.writelines(['from .pcn_training_config import Config'])
         f.flush()
 
+    import train2
     train2.main()

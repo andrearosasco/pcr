@@ -43,16 +43,16 @@ class Config(BaseConfig):
         grid_eval = False
         grid_res_step = 0.04
 
-        mb_size = 1
+        mb_size = 32
 
     class Data:
-        dataset_path = "./data/YCB"
+        dataset_path = 'data/MCD'
         partial_points = 2048  # number of points per input
         multiplier_complete_sampling = 50
         implicit_input_dimension = 8192 * 2
         dist = [0.1, 0.4, 0.5]
         noise_rate = 0.1
-        tolerance = 0.01
+        tolerance = 0.005
         n_classes = 55
         # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
         # in 0, 0, 0
@@ -63,7 +63,7 @@ class Config(BaseConfig):
             mb_size = 1
 
         class Eval:
-            mb_size = 1
+            mb_size = 32
 
     class Model:
         knn_layer = 1
@@ -80,7 +80,7 @@ class Config(BaseConfig):
         out_size = 1024
         # Implicit Function
         hidden_dim = 32
-        depth = 4
+        depth = 2
         # Others
         use_object_id = False
         use_deep_weights_generator = False
@@ -88,7 +88,8 @@ class Config(BaseConfig):
 
 
 if __name__ == '__main__':
-    import eval
     with Path('configs/__init__.py').open('w+') as f:
         f.writelines(['from .debug_config import Config'])
-    eval.main()
+
+    import train2
+    train2.main()

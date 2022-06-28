@@ -28,14 +28,14 @@ def main():
     # wandb.init(settings=wandb.Settings(start_method="fork"))
     model = Model(Config.Model)
 
-    id = '2cknh3af'
-    ckpt = f'model-{id}:v400'
-    project = 'pcr'
+    id = '3gvgzgmq'
+    ckpt = f'model-{id}:v28'
+    project = 'pcr-grasping'
 
     ckpt_path = None
     loggers = []
-    resume = False
-    use_checkpoint = False
+    resume = True
+    use_checkpoint = True
 
     if use_checkpoint:
         ckpt_path = f'artifacts/{ckpt}/model.ckpt' # .replace(':', '-')
@@ -61,10 +61,10 @@ def main():
         loggers.append(wandb_logger)
 
     checkpoint_callback = ModelCheckpoint(
-        monitor='valid/chamfer',
+        monitor='val_views/chamfer',
         dirpath='checkpoint',
-        filename='epoch{epoch:02d}-f1{valid/f1:.2f}',
-        mode='max',
+        filename='epoch{epoch:02d}-cd{val_views/chamfer:.2f}',
+        mode='min',
         save_last=True,
         auto_insert_metric_name=False)
 
@@ -76,7 +76,7 @@ def main():
                          logger=loggers,
                          gradient_clip_val=Config.Train.clip_value,
                          gradient_clip_algorithm='value',
-                         num_sanity_val_steps=2,
+                         num_sanity_val_steps=4,
                          callbacks=[
                                     SplitProgressBar(),
                                     checkpoint_callback],

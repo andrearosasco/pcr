@@ -133,6 +133,7 @@ def sample_point_cloud_pc(pc, n_points=8192, dist=None, noise_rate=0.1, toleranc
 
     points = torch.cat([points_uniform, points_noisy, points_surface], dim=1)
 
+    points = points.clip(min=-0.5 + 1e-6, max=0.5 - 1e-6)
     if tolerance > 0:
         labels = check_occupancy(pc, points, tolerance) # 0.002
 
@@ -144,7 +145,6 @@ def sample_point_cloud_pc(pc, n_points=8192, dist=None, noise_rate=0.1, toleranc
 
 
 def check_occupancy(reference, pc, voxel_size):
-    pc = pc.clip(min=-0.5 + 1e-6, max=0.5 - 1e-6)
     side = int(1 / voxel_size)
 
     ref_idxs = ((reference + 0.5) / voxel_size).long()
@@ -152,6 +152,7 @@ def check_occupancy(reference, pc, voxel_size):
     ref_grid[torch.arange(reference.shape[0]).reshape(-1, 1), ref_idxs[..., 0], ref_idxs[..., 1], ref_idxs[..., 2]] = True
 
     pc_idxs = ((pc + 0.5) / voxel_size).long()
+    pc_idxs = pc_idxs.clip(min=0, max=ref_grid.shape[1] - 1)
 
     res = ref_grid[torch.arange(reference.shape[0]).reshape(-1, 1), pc_idxs[..., 0], pc_idxs[..., 1], pc_idxs[..., 2]]
 

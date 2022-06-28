@@ -15,7 +15,7 @@ class Decoder:
             self.sdf.eval()
 
             batch_size = fast_weights[0][0].shape[0]
-            refined_pred = torch.tensor(torch.randn(batch_size, 400_000, 3).cpu().detach().numpy() * 0.1, device=Config.General.device,
+            refined_pred = torch.tensor(torch.randn(batch_size, 20_000, 3).cpu().detach().numpy() * 0.1, device=Config.General.device,
                                         requires_grad=True)
 
             loss_function = BCEWithLogitsLoss(reduction='mean')
@@ -42,10 +42,10 @@ class Decoder:
                 optim.step()
 
         selected = [torch.cat(points).squeeze() for points in new_points]
-        res = torch.zeros([batch_size, 400_000, 3], device=Config.General.device)
+        res = torch.zeros([batch_size, 8192*2, 3], device=Config.General.device)
         for i, s in enumerate(selected):
             # torch.sum(torch.sum(torch.cat([s > 0.5, s < -0.5], dim=1), dim=1) != 0)
-            k = min(s.size(0), 400_000)
+            k = min(s.size(0), 8192*2)
             perm = torch.randperm(s.size(0))
             res[i][:k] = s[perm[:k]]
 
