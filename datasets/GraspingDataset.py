@@ -51,6 +51,7 @@ class GraspingDataset(Dataset):
         x2_pose = np.load(((self.root / partial_path).parent / f'_0_{p2}_0_model_pose.npy').as_posix())
         y3_pose = np.load(((self.root / partial_path).parent / f'_{p3}_0_0_model_pose.npy').as_posix())
 
+
         vertices = match_mesh_to_partial(np.array(vertices), [y1_pose, x2_pose, y3_pose])
         mesh = TriangleMesh(vertices=Vector3dVector(vertices), triangles=Vector3iVector(triangles))
         complete = np.array(mesh.sample_points_uniformly(8192 * 2).points)
@@ -68,7 +69,8 @@ class GraspingDataset(Dataset):
             partial = np.concatenate([partial, zeros])
 
         center = get_bbox_center(complete)
-        diameter = np.sqrt(np.max(np.sum((complete) ** 2, axis=1))) * 2
+        # diameter = np.sqrt(np.max(np.sum((complete - center) ** 2, axis=1))) * 2
+        diameter = get_diameter(complete - center)
 
         complete, partial = (complete - center) / diameter, (partial - center) / diameter
 
@@ -223,7 +225,7 @@ def get_bbox_center(pc):
 
 def get_diameter(pc):
     diameter = pc.max(0) - pc.min(0)
-    return diameter
+    return np.max(diameter)
 
 
 class deterRandomSampler(Sampler):

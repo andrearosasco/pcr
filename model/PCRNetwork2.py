@@ -37,7 +37,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         super().__init__()
         self.backbone = BackBone(config)
         self.sdf = ImplicitFunction(config)
-        self.decoder = Decoder(self.sdf)
+        self.decoder = Decoder(self.sdf, 8192*2, 0.7, 20) #  8192*2, 0.7, 20
         self.train_decoder = Decoder2(self.sdf)
 
         # self.apply(self._init_weights)
@@ -123,12 +123,10 @@ class PCRNetwork(pl.LightningModule, ABC):
         return [dl1, dl2]
 
     def forward(self, partial, object_id=None, step=0.01):
-        samples = create_3d_grid(batch_size=partial.shape[0], step=step).to(Config.General.device)
-
         fast_weights, _ = self.backbone(partial)
-        prediction = torch.sigmoid(self.sdf(samples, fast_weights))
+        pc, _ = self.decoder(fast_weights)
 
-        return samples[prediction.squeeze(-1) > 0.5], fast_weights
+        return pc
 
     def configure_optimizers(self):
         optimizer = Config.Train.optimizer(self.parameters(), lr=Config.Train.lr, weight_decay=Config.Train.wd)
@@ -220,7 +218,7 @@ class PCRNetwork(pl.LightningModule, ABC):
                                                              noise_rate=Config.Data.noise_rate,
                                                              tolerance=Config.Data.tolerance)
                 fast_weights, _ = self.backbone(partial)
-                pc1 = self.decoder(fast_weights)
+                pc1, _ = self.decoder(fast_weights)
                 out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
                 self.val_outputs = {'random': {'pc1': pc1, 'out2': out2.detach().squeeze(2).cpu(),
                                                'target2': occupancy2.detach().cpu(),
@@ -236,7 +234,7 @@ class PCRNetwork(pl.LightningModule, ABC):
                                                              noise_rate=Config.Data.noise_rate,
                                                              tolerance=Config.Data.tolerance)
                 fast_weights, _ = self.backbone(partial)
-                pc1 = self.decoder(fast_weights)
+                pc1, _ = self.decoder(fast_weights)
                 out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
                 self.val_outputs['fixed'] = {'pc1': pc1, 'out2': out2.detach().squeeze(2).cpu(),
                                              'target2': occupancy2.detach().cpu(), 'samples2': samples2.detach().cpu(),
@@ -244,7 +242,7 @@ class PCRNetwork(pl.LightningModule, ABC):
                                              'batch_idx': batch_idx, 'dl_idx': dl_idx}
 
             if (self.current_epoch + 1) % 10 != 0:
-                return {'dl_idx': dl_idx}
+                return
 
 
         # The sampling with "sample_point_cloud" simulate the sampling used during training
@@ -278,35 +276,22 @@ class PCRNetwork(pl.LightningModule, ABC):
                     fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in
                                     range(0, 3 * (Config.Model.depth + 2), 3)]
 
-        pc1 = self.decoder(fast_weights)
+        pc1, prob = self.decoder(fast_weights)
         out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
 
-        return {'pc1': pc1, 'out2': out2.detach().squeeze(2).cpu(),
-                'target2': occupancy2.detach().cpu(), 'samples2': samples2.detach().cpu(),
-                'partial': partial.detach().cpu(), 'ground_truth': ground_truth, 'batch_idx': batch_idx, 'dl_idx': dl_idx}
 
-    def validation_step_end(self, output):
-        if (self.current_epoch + 1) % 10 != 0:
-            if output['dl_idx'] == 1:
-                self.trainer._active_loop.outputs = []
-                return
-
-        pred, trgt = output['out2'], output['target2'].int()
+        pred, trgt = out2.detach().squeeze(2).cpu(), occupancy2.detach().cpu().int()
         pred = torch.nan_to_num(pred)
 
-        if output['dl_idx'] == 0:
+        if dl_idx == 0:
             metrics = self.metrics['val_views']
-        if output['dl_idx'] == 1:
+        if dl_idx == 1:
             metrics = self.metrics['val_models']
 
         metrics['accuracy'](pred, trgt), metrics['precision'](pred, trgt)
-        metrics['chamfer'](chamfer_batch_pc(output['pc1'], output['ground_truth']).cpu())
+        metrics['chamfer'](chamfer_batch_pc(pc1, ground_truth).cpu())
         metrics['recall'](pred, trgt), metrics['f1'](pred, trgt)
         metrics['loss'](F.binary_cross_entropy(pred, trgt.float()))
-
-        output['pc1'], output['ground_truth'] = output['pc1'].detach().cpu(), output['ground_truth'].detach().cpu()
-
-        self.trainer._active_loop.outputs = []
 
     def validation_epoch_end(self, output):
 

@@ -28,30 +28,30 @@ def main():
     # wandb.init(settings=wandb.Settings(start_method="fork"))
     model = Model(Config.Model)
 
-    id = '3gvgzgmq'
-    ckpt = f'model-{id}:v28'
+    id = '2kkeig53'
+    ckpt = f'model-{id}:v9'
     project = 'pcr-grasping'
 
     ckpt_path = None
     loggers = []
-    resume = True
-    use_checkpoint = True
+    resume = False
+    use_checkpoint = False
 
     if use_checkpoint:
-        ckpt_path = f'artifacts/{ckpt}/model.ckpt' # .replace(':', '-')
+        ckpt_path = f'artifacts/{ckpt}/model.ckpt' if os.name != 'nt' else\
+            f'artifacts/{ckpt}/model.ckpt'.replace(':', '-')
 
         if not Path(ckpt_path).exists():
             run = wandb.init(id=id, settings=wandb.Settings(start_method="spawn"))
             run.use_artifact(f'rosasco/{project}/{ckpt}', type='model').download(f'artifacts/{ckpt}/')
             wandb.finish(exit_code=0)
 
-        model = Model.load_from_checkpoint(ckpt_path, config=Config.Model)  #
+        model = Model.load_from_checkpoint(ckpt_path, config=Config.Model)
 
     if Config.Eval.wandb:
         if resume:
             wandb.init(project=project, id=id, resume='must', config=Config.to_dict(), reinit=True, settings=wandb.Settings(start_method='thread'))
             wandb_logger = WandbLogger(log_model='all')
-
         else:
             wandb.init(project=project, reinit=True, config=Config.to_dict(),
                        settings=wandb.Settings(start_method="thread"))
@@ -82,4 +82,4 @@ def main():
                                     checkpoint_callback],
                          )
 
-    trainer.fit(model, ckpt_path=ckpt_path)  # .replace(':', '-')
+    trainer.fit(model, ckpt_path=ckpt_path)

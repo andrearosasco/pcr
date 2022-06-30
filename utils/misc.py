@@ -149,6 +149,8 @@ def check_occupancy(reference, pc, voxel_size):
 
     ref_idxs = ((reference + 0.5) / voxel_size).long()
     ref_grid = torch.zeros([reference.shape[0], side, side, side], dtype=torch.bool, device=pc.device)
+
+    ref_idxs = ref_idxs.clip(min=0, max=ref_grid.shape[1] - 1)
     ref_grid[torch.arange(reference.shape[0]).reshape(-1, 1), ref_idxs[..., 0], ref_idxs[..., 1], ref_idxs[..., 2]] = True
 
     pc_idxs = ((pc + 0.5) / voxel_size).long()

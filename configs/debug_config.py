@@ -56,8 +56,8 @@ class Config(BaseConfig):
         n_classes = 55
         # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
         # in 0, 0, 0
-        mode='split'
-        offset=False
+        mode = 'split'
+        offset = False
 
         class Train:
             mb_size = 1
