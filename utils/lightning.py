@@ -1,9 +1,9 @@
 import math
 
-from pytorch_lightning.callbacks import ProgressBar
+from pytorch_lightning.callbacks import TQDMProgressBar
 
 
-class SplitProgressBar(ProgressBar):
+class SplitProgressBar(TQDMProgressBar):
 
     def on_train_epoch_start(self, trainer, pl_module):
         super().on_train_epoch_start(trainer, pl_module)

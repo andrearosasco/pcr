@@ -47,7 +47,7 @@ if __name__ == '__main__':
     for idx in np.random.permutation(len(ds)):
         print(idx)
 
-        data = ds[idx]
+        data = ds[123135]
 
         partial, complete = data
         partial, complete = torch.tensor(partial, device='cuda').unsqueeze(0), torch.tensor(complete, device='cuda').unsqueeze(0)

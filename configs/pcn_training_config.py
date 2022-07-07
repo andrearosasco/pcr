@@ -18,11 +18,11 @@ class Config(BaseConfig):
         device = 'cuda'
         visible_dev = '0'
         seed = 1
-        num_workers = 30
+        num_workers = 10
         git = git_hash()
 
     class Train:
-        lr = 1e-5
+        lr = 1e-4
         wd = 0.0
         n_epoch = 1000
         clip_value = 1
@@ -43,7 +43,7 @@ class Config(BaseConfig):
         grid_eval = False
         grid_res_step = 0.04
 
-        mb_size = 32
+        mb_size = 8
 
     class Data:
         dataset_path = 'data/MCD'
@@ -61,7 +61,7 @@ class Config(BaseConfig):
             mb_size = 32
 
         class Eval:
-            mb_size = 32
+            mb_size = 8
 
     class Model:
         knn_layer = 1

@@ -4,24 +4,40 @@ from sklearn.neighbors import KDTree
 import numpy as np
 
 from configs import Config
-from utils.chamfer import ChamferDistanceL1, ChamferDistanceL2
 
 
-def chamfer_batch(predictions, meshes):
+# def chamfer_batch(predictions, meshes):
+#
+#     ground_truth = torch.zeros([1, 8192, 3], device=Config.General.device)
+#     for i, mesh in enumerate(meshes):
+#         ground_truth[i] = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0)
+#
+#     d = chamfer_distance(predictions, ground_truth)
+#     d2 = ChamferDistanceL1()(predictions, ground_truth)
+#     return d.mean().detach().cpu()
+try:
+    from extensions.chamfer_dist import ChamferDistanceL1
+    l1 = True
+except ModuleNotFoundError:
+    print('warning: using python chamfer l2')
+    l1 = False
 
-    ground_truth = torch.zeros([1, 8192, 3], device=Config.General.device)
-    for i, mesh in enumerate(meshes):
-        ground_truth[i] = torch.tensor(np.array(mesh.sample_points_uniformly(8192).points)).unsqueeze(0)
-
-    d = chamfer_distance(predictions, ground_truth)
-    d2 = ChamferDistanceL1()(predictions, ground_truth)
-    return d.mean().detach().cpu()
 
 def chamfer_batch_pc(predictions, ground_truth):
 
     # d2 = ChamferDistanceL2()(predictions, ground_truth)
-    d1 = ChamferDistanceL1(ignore_zeros=True)(predictions, ground_truth)
-    # d3 = chamfer_distance(predictions, ground_truth).mean()
+    # d3 = ChamferDistanceL1(ignore_zeros=True)(torch.rand(1, 8192, 3, device='cuda'), torch.rand(1, 8192, 3, device='cuda'))
+    #
+    if l1:
+        d1 = ChamferDistanceL1(ignore_zeros=True)(predictions.contiguous(), ground_truth.contiguous())
+    else:
+        d1 = chamfer_distance(predictions.contiguous(), ground_truth.contiguous()).mean()
+    # d2 = torch.tensor([0.], device='cuda')
+    # for pc, gt in zip(predictions, ground_truth):
+    #     d2 += ChamferDistanceL1(ignore_zeros=True)(pc.unsqueeze(0).contiguous(), gt.unsqueeze(0).contiguous())
+    # d2 = d2 / predictions.shape[0]
+    # for pc in predictions:
+    # d1 = chamfer_distance(predictions, ground_truth).mean()
 
     return d1
 

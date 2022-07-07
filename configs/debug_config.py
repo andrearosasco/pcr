@@ -33,7 +33,7 @@ class Config(BaseConfig):
         adaptation = False
         chamfer = False
 
-        mb_size = 1
+        mb_size = 8
 
     class Eval:
         wandb = False
@@ -43,7 +43,7 @@ class Config(BaseConfig):
         grid_eval = False
         grid_res_step = 0.04
 
-        mb_size = 32
+        mb_size = 2
 
     class Data:
         dataset_path = 'data/MCD'
@@ -60,10 +60,10 @@ class Config(BaseConfig):
         offset = False
 
         class Train:
-            mb_size = 1
+            mb_size = 8
 
         class Eval:
-            mb_size = 32
+            mb_size = 2
 
     class Model:
         knn_layer = 1

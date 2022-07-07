@@ -24,7 +24,7 @@ patch_size = 40
 
 
 class GraspingDataset(Dataset):
-    def __init__(self, root, json_file_path, subset='train_models_train_views'):
+    def __init__(self, root, json_file_path, subset='train_models_train_views', length=-1):
         """
         Args:
         """
@@ -34,7 +34,11 @@ class GraspingDataset(Dataset):
         with open(json_file_path, "r") as stream:
             self.data = json.load(stream)
 
-        self.length = len(self.data[subset])
+        if length == -1:
+            self.length = len(self.data[subset])
+        else:
+            self.length = length
+        np.random.shuffle(self.data[subset])
 
     def __len__(self):
         return self.length
@@ -56,9 +60,8 @@ class GraspingDataset(Dataset):
         mesh = TriangleMesh(vertices=Vector3dVector(vertices), triangles=Vector3iVector(triangles))
         complete = np.array(mesh.sample_points_uniformly(8192 * 2).points)
 
-        partial = np.load(self.root / (partial_path + 'partial.npy'))
-        # partial = np.array(read_point_cloud((self.root / (partial_path + 'pc.pcd')).as_posix()).points)
-
+        # partial = np.load(self.root / (partial_path + 'partial.npy'))
+        partial = np.array(read_point_cloud((self.root / (partial_path + 'pc.pcd')).as_posix()).points)
         partial = partial + np.array([0, 0, -1])
 
         choice = np.random.permutation(partial.shape[0])
@@ -306,7 +309,7 @@ if __name__ == '__main__':
     root = 'data/MCD'
     split = 'data/MCD/build_datasets/train_test_dataset.json'
 
-    training_set = MCDataset(root, split, subset='train_models_train_views')
+    training_set = GraspingDataset(root, split, subset='train_models_train_views')
     for data in tqdm.tqdm(training_set):
         x, y = data
 

@@ -2,13 +2,17 @@ import json
 from pathlib import Path
 
 import numpy as np
+import paramiko
 import torch as tc
 import tqdm
+
+from utils.misc import create_cube
 
 try:
     from open3d.cpu.pybind.geometry import TriangleMesh, PointCloud
     from open3d.cpu.pybind.io import read_point_cloud
     from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
+    from open3d.cpu.pybind.visualization import draw_geometries
 except ImportError:
     from open3d.cuda.pybind.geometry import TriangleMesh, PointCloud
     from open3d.cuda.pybind.io import read_point_cloud
@@ -16,23 +20,31 @@ except ImportError:
 from scipy.spatial.transform import Rotation
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import Sampler
-import open3d as o3d
 
 patch_size = 40
 
 
-class MCDataset(Dataset):
-    def __init__(self, root, json_file_path, subset='train_models_train_views'):
+class RemoteDataset(Dataset):
+    def __init__(self, root, json_file_path, subset='train_models_train_views', length=-1):
         """
         Args:
         """
+        ssh_client = paramiko.SSHClient()
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh_client.connect(username='arosasco', password='22AgostO2015!', hostname='10.240.102.10')
+        self.sftp = ssh_client.open_sftp()
+
         self.subset = subset
         self.file_path = json_file_path
         self.root = Path(root)
-        with open(json_file_path, "r") as stream:
+        with self.sftp.open(json_file_path, "r") as stream:
             self.data = json.load(stream)
 
-        self.length = len(self.data[subset])
+        if length == -1:
+            self.length = len(self.data[subset])
+        else:
+            self.length = length
+        np.random.shuffle(self.data[subset])
 
     def __len__(self):
         return self.length
@@ -41,19 +53,27 @@ class MCDataset(Dataset):
         partial_path = self.data[self.subset][idx][0]
         ground_truth_path = self.data[self.subset][idx][1]
 
-        vertices = np.load((self.root / ground_truth_path / 'vertices.npy').as_posix())
-        triangles = np.load((self.root / ground_truth_path / 'triangles.npy').as_posix())
+        with self.sftp.open((self.root / ground_truth_path / 'vertices.npy').as_posix()) as f:
+            vertices = np.load(f)
+        with self.sftp.open((self.root / ground_truth_path / 'triangles.npy').as_posix()) as f:
+            triangles = np.load(f)
 
         p3, p2, p1 = Path(partial_path).parts[-1].split('_')[1:4]
-        y1_pose = np.load(((self.root / partial_path).parent / f'_0_0_{p1}_model_pose.npy').as_posix())
-        x2_pose = np.load(((self.root / partial_path).parent / f'_0_{p2}_0_model_pose.npy').as_posix())
-        y3_pose = np.load(((self.root / partial_path).parent / f'_{p3}_0_0_model_pose.npy').as_posix())
+        with self.sftp.open(((self.root / partial_path).parent / f'_0_0_{p1}_model_pose.npy').as_posix()) as f:
+            y1_pose = np.load(f)
+        with self.sftp.open(((self.root / partial_path).parent / f'_0_{p2}_0_model_pose.npy').as_posix()) as f:
+            x2_pose = np.load(f)
+        with self.sftp.open(((self.root / partial_path).parent / f'_{p3}_0_0_model_pose.npy').as_posix()) as f:
+            y3_pose = np.load(f)
+
 
         vertices = match_mesh_to_partial(np.array(vertices), [y1_pose, x2_pose, y3_pose])
         mesh = TriangleMesh(vertices=Vector3dVector(vertices), triangles=Vector3iVector(triangles))
         complete = np.array(mesh.sample_points_uniformly(8192 * 2).points)
 
-        partial = np.array(read_point_cloud((self.root / (partial_path + 'pc.pcd')).as_posix()).points)
+        with self.sftp.open((self.root / (partial_path + 'partial.npy')).as_posix()) as f:
+            partial = np.load(f)
+        # partial = np.array(read_point_cloud((self.root / (partial_path + 'pc.pcd')).as_posix()).points)
         partial = partial + np.array([0, 0, -1])
 
         choice = np.random.permutation(partial.shape[0])
@@ -62,6 +82,12 @@ class MCDataset(Dataset):
         if partial.shape[0] < 2048:
             zeros = np.zeros((2048 - partial.shape[0], 3))
             partial = np.concatenate([partial, zeros])
+
+        center = get_bbox_center(complete)
+        # diameter = np.sqrt(np.max(np.sum((complete - center) ** 2, axis=1))) * 2
+        diameter = get_diameter(complete - center)
+
+        complete, partial = (complete - center) / diameter, (partial - center) / diameter
 
         return partial.astype(np.float32), complete.astype(np.float32)
 
@@ -73,7 +99,6 @@ class MCDataset(Dataset):
             if j == "ycb" or j == "grasp_database":
                 idx = i
         return string_list[idx + 1] + string_list[-1]
-
 
 
 def pc_to_binvox_for_shape_completion(points,
@@ -212,9 +237,10 @@ def get_bbox_center(pc):
     center = pc.min(0) + (pc.max(0) - pc.min(0)) / 2.0
     return center
 
+
 def get_diameter(pc):
     diameter = pc.max(0) - pc.min(0)
-    return diameter
+    return np.max(diameter)
 
 
 class deterRandomSampler(Sampler):
@@ -290,52 +316,19 @@ def match_mesh_to_partial(vertices, pose):
     return pc
 
 
-def load_dataset(batch_size, num_cuda_workers, mode, debug=False, seed=100):
-    # dataloader.dataset.set_model("train_models_train_views")
-    datafile = ""
-    if debug:
-        datafile = "data/MCD/build_dataset/debug_datasets.yaml"
-    elif mode == "train":
-        datafile = "data/MCD/build_datasets/train_test_dataset.json"
-    elif mode == "test":
-        datafile = "data/MCD/datasets1/full_test_Dataset.yaml"
-    else:
-        raise ValueError("No known dataset for " + mode + " mode")
-
-    dataset = ""
-    root = Path('/home/IIT.LOCAL/arosasco/projects/pcr/data/MCD/')
-    if mode == "train":
-        shuffle = True
-        dataset = trainDataSet(root, datafile, 'train_models_train_views')
-        sampler = None
-    elif mode == "test":
-        shuffle = False
-        dataset = testDataSet(root, datafile, 'train_models_train_views')
-        sampler = deterRandomSampler(dataset, seed)
-
-    dataloader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            shuffle=shuffle,
-                            num_workers=num_cuda_workers,
-                            pin_memory=True)
-    return dataloader
-
 
 if __name__ == '__main__':
-    dl = load_dataset(32, 30, 'train')
-    for data in tqdm.tqdm(dl):
-        batch_x, batch_y = data
-        for x, y in zip(batch_x, batch_y):
-            a = PointCloud(points=Vector3dVector(x.numpy()))
-            a.paint_uniform_color([0, 0, 1])
-            b = PointCloud(points=Vector3dVector(y.numpy()))
-            b.paint_uniform_color([1, 0, 0])
-            # draw_geometries([a, b, TriangleMesh.create_coordinate_frame(origin=[0.5, 0.5, 0.5]),
-            #                  TriangleMesh.create_coordinate_frame(origin=[-0.5, -0.5, -0.5])], front=[0, 0, -1], lookat=[0, 0, 0], up=[0, 1, 0], zoom=1.)
+    root = '/home/IIT.LOCAL/arosasco/projects/pcr/data/MCD'
+    split = '/home/IIT.LOCAL/arosasco/projects/pcr/data/MCD/build_datasets/train_test_dataset.json'
 
-            # print(get_bbox_center(x.numpy()))
-            # print(get_bbox_center(y.numpy()))
-            #
-            # print(get_diameter(x.numpy()))
-            # print(get_diameter(y.numpy()))
+    training_set = RemoteDataset(root, split, subset='train_models_train_views')
+    for data in tqdm.tqdm(training_set):
+        x, y = data
 
+        a = PointCloud(points=Vector3dVector(x))
+        a.paint_uniform_color([1, 0, 0])
+
+        b = PointCloud(points=Vector3dVector(y))
+        b.paint_uniform_color([0, 1, 0])
+
+        draw_geometries([a, b, create_cube()])

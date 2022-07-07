@@ -18,7 +18,7 @@ class Decoder:
             self.sdf.eval()
 
             batch_size = fast_weights[0][0].shape[0]
-            refined_pred = torch.tensor(torch.randn(batch_size, self.num_points, 3).cpu().detach().numpy() * 1, device=Config.General.device,
+            refined_pred = torch.tensor(torch.randn(batch_size, self.num_points * 2, 3).cpu().detach().numpy() * 1, device=Config.General.device,
                                         requires_grad=True)
 
             loss_function = BCEWithLogitsLoss(reduction='mean')

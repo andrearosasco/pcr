@@ -3,11 +3,10 @@ from abc import ABC
 from collections import defaultdict
 import numpy as np
 import torch
-from datasets.GraspingDataset import GraspingDataset
+
+from datasets.GraspingDatasetNoise import GraspingDataset
 from utils.metrics import chamfer_batch_pc
-from utils.sgdiff import DifferentiableSGD
 from .Backbone import BackBone
-from .Decoder2 import Decoder as Decoder2
 from .Decoder import Decoder
 from .ImplicitFunction import ImplicitFunction
 
@@ -19,14 +18,16 @@ except ImportError:
     from open3d.cpu.pybind.geometry import PointCloud
 
 from configs import Config
+try:
+    from torchmetrics import F1Score
+except ImportError:
+    from torchmetrics import F1 as F1Score
 
-from torchmetrics import Accuracy, Precision, Recall, F1Score, MeanMetric
+from torchmetrics import Accuracy, Precision, Recall, MeanMetric
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from datasets.ShapeNetPOVDepth import ShapeNet as Dataset
 
-from utils.misc import create_3d_grid, sample_point_cloud_pc
-import open3d as o3d
+from utils.misc import sample_point_cloud_pc
 import pytorch_lightning as pl
 import wandb
 
@@ -38,7 +39,6 @@ class PCRNetwork(pl.LightningModule, ABC):
         self.backbone = BackBone(config)
         self.sdf = ImplicitFunction(config)
         self.decoder = Decoder(self.sdf, 8192*2, 0.7, 20) #  8192*2, 0.7, 20
-        self.train_decoder = Decoder2(self.sdf)
 
         # self.apply(self._init_weights)
         for parameter in self.backbone.transformer.parameters():
@@ -46,17 +46,16 @@ class PCRNetwork(pl.LightningModule, ABC):
                 torch.nn.init.xavier_uniform_(parameter)
 
 
-        m = {'accuracy': Accuracy(),
-            'precision': Precision(),
-            'recall': Recall(),
-            'f1': F1Score(),
-            'loss': MeanMetric(),
-            'chamfer': MeanMetric()}
+        m = {'accuracy': Accuracy().cuda(),
+            'precision': Precision().cuda(),
+            'recall': Recall().cuda(),
+            'f1': F1Score().cuda(),
+            'loss': MeanMetric().cuda(),}
 
         self.metrics = {
             'train': m,
-            'val_models': {**copy.deepcopy(m), **{'chamfer': MeanMetric()}},
-            'val_views': {**copy.deepcopy(m), **{'chamfer': MeanMetric()}}
+            'val_models': {**copy.deepcopy(m), **{'chamfer': MeanMetric().cuda()}},
+            'val_views': {**copy.deepcopy(m), **{'chamfer': MeanMetric().cuda()}}
         }
 
         self.training_set, self.valid_set_models, self.valid_set_views = None, None, None
@@ -85,11 +84,12 @@ class PCRNetwork(pl.LightningModule, ABC):
         # self.training_set = Dataset(Config, mode=f"{Config.Data.mode}/train")
         # self.valid_set = Dataset(Config, mode=f"{Config.Data.mode}/valid")
         root = Config.Data.dataset_path
-        split = 'data/MCD/build_datasets/train_test_dataset.json'
+        split = 'data/MCD/build_datasets/grasping_dataset.json'
 
         self.training_set = GraspingDataset(root, split, subset='train_models_train_views')
-        self.valid_set_models = GraspingDataset(root, split, subset='holdout_models_holdout_views')
-        self.valid_set_views = GraspingDataset(root, split, subset='train_models_holdout_views')
+        # self.valid_set_models = GraspingDataset(root, split, subset='train_models_train_views', length=8)
+        self.valid_set_models = GraspingDataset(root, split, subset='holdout_models_holdout_views', length=3200)
+        # self.valid_set_views = GraspingDataset(root, split, subset='train_models_holdout_views')
 
     def train_dataloader(self):
         dl = DataLoader(self.training_set,
@@ -102,14 +102,14 @@ class PCRNetwork(pl.LightningModule, ABC):
         return dl
 
     def val_dataloader(self):
-        # Smaller one
-        dl1 = DataLoader(
-            self.valid_set_views,
-            shuffle=False,
-            batch_size=Config.Eval.mb_size,
-            drop_last=False,
-            num_workers=Config.General.num_workers,
-            pin_memory=True)
+        # # Smaller one
+        # dl1 = DataLoader(
+        #     self.valid_set_views,
+        #     shuffle=False,
+        #     batch_size=Config.Eval.mb_size,
+        #     drop_last=False,
+        #     num_workers=Config.General.num_workers,
+        #     pin_memory=True)
 
         #  Bigger one
         dl2 = DataLoader(
@@ -120,13 +120,14 @@ class PCRNetwork(pl.LightningModule, ABC):
             num_workers=Config.General.num_workers,
             pin_memory=True)
 
-        return [dl1, dl2]
+        return dl2
 
-    def forward(self, partial, object_id=None, step=0.01):
+    def forward(self, partial, num_points):
+        decoder = Decoder(self.sdf, num_points, 0.7, 20)
         fast_weights, _ = self.backbone(partial)
-        pc, _ = self.decoder(fast_weights)
+        pc, prob = decoder(fast_weights)
 
-        return pc
+        return pc, prob
 
     def configure_optimizers(self):
         optimizer = Config.Train.optimizer(self.parameters(), lr=Config.Train.lr, weight_decay=Config.Train.wd)
@@ -140,38 +141,37 @@ class PCRNetwork(pl.LightningModule, ABC):
         partial, ground_truth = batch
 
         fast_weights, _ = self.backbone(partial)
-        ### Adaptation
-        if Config.Train.adaptation:
-            adaptation_steps = 10
-
-            fast_weights = [[t.requires_grad_(True) for t in l] for l in fast_weights]
-
-            for _ in range(adaptation_steps):
-                optim = DifferentiableSGD(sum(fast_weights, []), lr=0.1,
-                                          momentum=0.9)  # the sum flatten the list of list
-
-                out = self.sdf(partial, fast_weights)
-                # The loss function also computes the sigmoid
-                loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,),
-                                                                          device=Config.General.device))
-
-                loss.backward(inputs=sum(fast_weights, []), retain_graph=True)
-                fast_weights = optim.step()
-                fast_weights = [[fast_weights[i].to(Config.General.device),
-                                 fast_weights[i + 1].to(Config.General.device),
-                                 fast_weights[i + 2].to(Config.General.device)]
-                                for i in range(0, 3 * (Config.Model.depth + 2), 3)]
+        # ### Adaptation
+        # if Config.Train.adaptation:
+        #     adaptation_steps = 10
+        #
+        #     fast_weights = [[t.requires_grad_(True) for t in l] for l in fast_weights]
+        #
+        #     for _ in range(adaptation_steps):
+        #         optim = DifferentiableSGD(sum(fast_weights, []), lr=0.1,
+        #                                   momentum=0.9)  # the sum flatten the list of list
+        #
+        #         out = self.sdf(partial, fast_weights)
+        #         # The loss function also computes the sigmoid
+        #         loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,),
+        #                                                                   device=Config.General.device))
+        #
+        #         loss.backward(inputs=sum(fast_weights, []), retain_graph=True)
+        #         fast_weights = optim.step()
+        #         fast_weights = [[fast_weights[i].to(Config.General.device),
+        #                          fast_weights[i + 1].to(Config.General.device),
+        #                          fast_weights[i + 2].to(Config.General.device)]
+        #                         for i in range(0, 3 * (Config.Model.depth + 2), 3)]
 
         samples, target = sample_point_cloud_pc(ground_truth, n_points=Config.Data.implicit_input_dimension,
                                                 dist=Config.Data.dist,
                                                 noise_rate=Config.Data.noise_rate,
                                                 tolerance=Config.Data.tolerance)
-        target = target.float()
 
         out = self.sdf(samples, fast_weights)
-        pred = torch.sigmoid(out.detach()).cpu()
+        loss = F.binary_cross_entropy_with_logits(out, target.unsqueeze(-1).to(out.dtype))
 
-        loss = F.binary_cross_entropy_with_logits(out, target.unsqueeze(-1))
+        pred = torch.sigmoid(out.detach()).cpu()
         target = target.unsqueeze(-1).int()
 
         return {'loss': loss, 'pred': pred.detach().cpu(), 'target': target.detach().cpu()}
@@ -184,7 +184,6 @@ class PCRNetwork(pl.LightningModule, ABC):
         # This log the metrics on the current batch and accumulate it in the average
         metrics = self.metrics['train']
 
-
         self.log('train/accuracy', metrics['accuracy'](pred, trgt))
         self.log('train/precision', metrics['precision'](pred, trgt))
         self.log('train/recall', metrics['recall'](pred, trgt))
@@ -192,57 +191,41 @@ class PCRNetwork(pl.LightningModule, ABC):
 
         self.log('train/loss', metrics['loss'](torch.nan_to_num(output['loss'].detach().cpu(), nan=1)))
 
+    @torch.no_grad()
     def on_validation_epoch_start(self):
-        self.random_batch = np.random.randint(0, int(len(self.valid_set_models) / Config.Data.Eval.mb_size) - 1)
+        self.random_batch = np.random.randint(1, int(len(self.valid_set_models) / Config.Data.Eval.mb_size))
+        self.val_outputs = {}
 
         for m in self.metrics['val_models'].values():
             m.reset()
         for m in self.metrics['val_views'].values():
             m.reset()
 
-    def validation_step(self, batch, batch_idx, dl_idx):
+    @torch.no_grad()
+    def validation_step(self, batch, batch_idx):
         partial, ground_truth = batch
-
         # We always validate on the small valid_set
 
         # We validate on the big valid_set once every 10 epochs
         # Still we log a random and a fixed reconstruction from the
         # big dataset every epoch.
-        if dl_idx == 1:
             # Sample one fixed and one random batch for point cloud logging
 
-            if self.random_batch == batch_idx:
-                samples2, occupancy2 = sample_point_cloud_pc(ground_truth,
-                                                             n_points=Config.Data.implicit_input_dimension,
-                                                             dist=Config.Data.dist,
-                                                             noise_rate=Config.Data.noise_rate,
-                                                             tolerance=Config.Data.tolerance)
-                fast_weights, _ = self.backbone(partial)
-                pc1, _ = self.decoder(fast_weights)
-                out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
-                self.val_outputs = {'random': {'pc1': pc1, 'out2': out2.detach().squeeze(2).cpu(),
-                                               'target2': occupancy2.detach().cpu(),
-                                               'samples2': samples2.detach().cpu(),
-                                               'partial': partial.detach().cpu(), 'ground_truth': ground_truth,
-                                               'batch_idx': batch_idx, 'dl_idx': dl_idx}
-                                    }
+        if 0 == batch_idx or batch_idx == self.random_batch:
+            samples2, occupancy2 = sample_point_cloud_pc(ground_truth,
+                                                         n_points=Config.Data.implicit_input_dimension,
+                                                         dist=Config.Data.dist,
+                                                         noise_rate=Config.Data.noise_rate,
+                                                         tolerance=Config.Data.tolerance)
+            fast_weights, _ = self.backbone(partial)
+            pc1, _ = self.decoder(fast_weights)
+            out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
 
-            if int(len(self.valid_set_models) / Config.Data.Eval.mb_size) - 2 == batch_idx:
-                samples2, occupancy2 = sample_point_cloud_pc(ground_truth,
-                                                             n_points=Config.Data.implicit_input_dimension,
-                                                             dist=Config.Data.dist,
-                                                             noise_rate=Config.Data.noise_rate,
-                                                             tolerance=Config.Data.tolerance)
-                fast_weights, _ = self.backbone(partial)
-                pc1, _ = self.decoder(fast_weights)
-                out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
-                self.val_outputs['fixed'] = {'pc1': pc1, 'out2': out2.detach().squeeze(2).cpu(),
-                                             'target2': occupancy2.detach().cpu(), 'samples2': samples2.detach().cpu(),
-                                             'partial': partial.detach().cpu(), 'ground_truth': ground_truth,
-                                             'batch_idx': batch_idx, 'dl_idx': dl_idx}
-
-            if (self.current_epoch + 1) % 10 != 0:
-                return
+            key = 'fixed' if batch_idx == 0 else 'random'
+            self.val_outputs[key] = {'pc1': pc1, 'out2': out2.detach().squeeze(2).cpu(),
+                                         'target2': occupancy2.detach().cpu(), 'samples2': samples2.detach().cpu(),
+                                         'partial': partial.detach().cpu(), 'ground_truth': ground_truth,
+                                         'batch_idx': batch_idx}
 
 
         # The sampling with "sample_point_cloud" simulate the sampling used during training
@@ -257,50 +240,57 @@ class PCRNetwork(pl.LightningModule, ABC):
         fast_weights, _ = self.backbone(partial)
 
         ### Adaptation
-        if Config.Train.adaptation:
-            with torch.enable_grad():
-                adaptation_steps = 10
+        # if Config.Train.adaptation:
+        #     with torch.enable_grad():
+        #         adaptation_steps = 10
+        #
+        #         fast_weights = [[t.requires_grad_(True) for t in l] for l in fast_weights]
+        #
+        #         for _ in range(adaptation_steps):
+        #             optim = DifferentiableSGD(sum(fast_weights, []), lr=0.1,
+        #                                       momentum=0.9)  # the sum flatten the list of list
+        #
+        #             out = self.sdf(partial, fast_weights)
+        #             loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,),
+        #                                                                       device=Config.General.device))
+        #
+        #             loss.backward(inputs=sum(fast_weights, []), retain_graph=True)
+        #             fast_weights = optim.step()
+        #             fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in
+        #                             range(0, 3 * (Config.Model.depth + 2), 3)]
 
-                fast_weights = [[t.requires_grad_(True) for t in l] for l in fast_weights]
+        pc1, _ = self.decoder(fast_weights)
+        # fp_idxs = fp_sampling(pc1[0:2], 1024)
+        # fp_pc1 = pc1[0:2][torch.arange(fp_idxs.shape[0]).unsqueeze(-1), fp_idxs.long(), :]
+        # vx_pc1 = voxel_downsample(pc1, 0.005)
+        #
+        # import mcubes
+        # grid1 = voxelize_pc(pc1, 0.005)
+        # vertices, triangles = mcubes.marching_cubes(grid1[0].cpu().numpy(), 0.5)
+        # mesh = o3d.geometry.TriangleMesh(triangles=Vector3iVector(triangles), vertices=Vector3dVector(vertices))
+        #
+        out2 = self.sdf(samples2, fast_weights)
+        pred2 = torch.sigmoid(out2)
 
-                for _ in range(adaptation_steps):
-                    optim = DifferentiableSGD(sum(fast_weights, []), lr=0.1,
-                                              momentum=0.9)  # the sum flatten the list of list
+        out, pred, trgt = out2.detach().squeeze(2), pred2.detach().squeeze(2),\
+                          occupancy2.detach().int()
 
-                    out = self.sdf(partial, fast_weights)
-                    loss = F.binary_cross_entropy_with_logits(out, torch.ones(partial.shape[:2] + (1,),
-                                                                              device=Config.General.device))
+        loss = F.binary_cross_entropy_with_logits(out, trgt.to(out.dtype))
 
-                    loss.backward(inputs=sum(fast_weights, []), retain_graph=True)
-                    fast_weights = optim.step()
-                    fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in
-                                    range(0, 3 * (Config.Model.depth + 2), 3)]
-
-        pc1, prob = self.decoder(fast_weights)
-        out2 = torch.sigmoid(self.sdf(samples2, fast_weights))
-
-
-        pred, trgt = out2.detach().squeeze(2).cpu(), occupancy2.detach().cpu().int()
         pred = torch.nan_to_num(pred)
 
-        if dl_idx == 0:
-            metrics = self.metrics['val_views']
-        if dl_idx == 1:
-            metrics = self.metrics['val_models']
+        metrics = self.metrics['val_models']
 
         metrics['accuracy'](pred, trgt), metrics['precision'](pred, trgt)
-        metrics['chamfer'](chamfer_batch_pc(pc1, ground_truth).cpu())
+        metrics['chamfer'](chamfer_batch_pc(pc1, ground_truth))
         metrics['recall'](pred, trgt), metrics['f1'](pred, trgt)
-        metrics['loss'](F.binary_cross_entropy(pred, trgt.float()))
+        metrics['loss'](loss)
 
+    @torch.no_grad()
     def validation_epoch_end(self, output):
 
-        for k, m in self.metrics['val_views'].items():
-            self.log(f'val_views/{k}', m.compute())
-
-        if (self.current_epoch + 1) % 10 == 0:
-            for k, m in self.metrics['val_models'].items():
-                self.log(f'val_models/{k}', m.compute())
+        for k, m in self.metrics['val_models'].items():
+            self.log(f'val_models/{k}', m.compute())
 
         if self.val_outputs is None:
             return
@@ -344,14 +334,18 @@ class PCRNetwork(pl.LightningModule, ABC):
 
             # TODO Fix partial and Add colors
             if Config.Eval.wandb:
-                self.trainer.logger.experiment.log(
+                experiment = self.trainer.logger.experiment
+                if isinstance(experiment, list):
+                    experiment = experiment[0]
+
+                experiment.log(
                     {f'{name}_precision_pc': wandb.Object3D({"points": precision_pc, 'type': 'lidar/beta'})})
-                self.trainer.logger.experiment.log(
+                experiment.log(
                     {f'{name}_recall_pc': wandb.Object3D({"points": recall_pc, 'type': 'lidar/beta'})})
-                self.trainer.logger.experiment.log(
+                experiment.log(
                     {f'{name}_partial_pc': wandb.Object3D({"points": partial, 'type': 'lidar/beta'})})
-                self.trainer.logger.experiment.log(
+                experiment.log(
                     {f'{name}_complete_pc': wandb.Object3D({"points": complete, 'type': 'lidar/beta'})})
-                self.trainer.logger.experiment.log(
+                experiment.log(
                     {f'{name}_reconstruction': wandb.Object3D(
                         {"points": np.concatenate([reconstruction, partial], axis=0), 'type': 'lidar/beta'})})

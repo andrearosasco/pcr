@@ -143,6 +143,17 @@ def sample_point_cloud_pc(pc, n_points=8192, dist=None, noise_rate=0.1, toleranc
 
     return points, labels
 
+def voxelize_pc(pc, voxel_size):
+    side = int(1 / voxel_size)
+
+    ref_idxs = ((pc + 0.5) / voxel_size).long()
+    ref_grid = torch.zeros([pc.shape[0], side, side, side], dtype=torch.bool, device=pc.device)
+
+    ref_idxs = ref_idxs.clip(min=0, max=ref_grid.shape[1] - 1)
+    ref_grid[
+        torch.arange(pc.shape[0]).reshape(-1, 1), ref_idxs[..., 0], ref_idxs[..., 1], ref_idxs[..., 2]] = True
+
+    return ref_grid
 
 def check_occupancy(reference, pc, voxel_size):
     side = int(1 / voxel_size)
@@ -164,8 +175,11 @@ def check_occupancy(reference, pc, voxel_size):
 def voxel_downsample(pc, voxel_size):
     side = int(1 / voxel_size)
 
-    idxs = ((pc + 0.5) / voxel_size).long()
     grid = torch.zeros([pc.shape[0], side, side, side], dtype=torch.bool, device=pc.device)
+
+    idxs = ((pc + 0.5) / voxel_size).long()
+    idxs = idxs.clip(min=0, max=grid.shape[1] - 1)
+
     grid[torch.arange(pc.shape[0]).reshape(-1, 1), idxs[..., 0], idxs[..., 1], idxs[..., 2]] = True
 
     return grid.nonzero()[..., 1:] * voxel_size - (0.5 - voxel_size / 2)
