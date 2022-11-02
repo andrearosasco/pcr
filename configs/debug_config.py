@@ -59,12 +59,6 @@ class Config(BaseConfig):
         mode = 'split'
         offset = False
 
-        class Train:
-            mb_size = 8
-
-        class Eval:
-            mb_size = 2
-
     class Model:
         knn_layer = 1
         # Transformer
@@ -85,6 +79,11 @@ class Config(BaseConfig):
         use_object_id = False
         use_deep_weights_generator = False
         assert divmod(embed_dim, num_heads)[1] == 0
+
+        class Decoder:
+            num_points = 8192 * 2
+            thr = 0.7
+            itr = 30
 
 
 if __name__ == '__main__':

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import torch
+
 from utils.reproducibility import make_reproducible
 from utils.lightning import SplitProgressBar
 
@@ -28,16 +30,16 @@ def main():
     # torch.multiprocessing.set_sharing_strategy('file_system')
     # make_reproducible(TrainConfig.seed)
     # wandb.init(settings=wandb.Settings(start_method="fork"))
-    model = Model(Config.Model)
+    # model = Model(Config.Model)
 
-    id = '1jolxd81'
-    ckpt = f'model-{id}:v0'
+    id = '1m5301hl'
+    ckpt = f'model-{id}:v69'
     project = 'pcr-grasping'
 
     ckpt_path = None
     loggers = []
     resume = False
-    use_checkpoint = False
+    use_checkpoint = True
 
     if use_checkpoint:
         ckpt_path = f'artifacts/{ckpt}/model.ckpt' if os.name != 'nt' else \
@@ -48,6 +50,7 @@ def main():
             run.use_artifact(f'rosasco/{project}/{ckpt}', type='model').download(f'artifacts/{ckpt}/')
             wandb.finish(exit_code=0)
 
+        print('Loading weights...')
         model = Model.load_from_checkpoint(ckpt_path, config=Config.Model)
 
     if Config.Eval.wandb:
@@ -60,7 +63,7 @@ def main():
                        settings=wandb.Settings(start_method="thread"))
             wandb_logger = WandbLogger(log_model='all')
 
-        wandb_logger.watch(model, log='all', log_freq=Config.Eval.log_metrics_every)
+        # wandb_logger.watch(model, log='all', log_freq=Config.Eval.log_metrics_every)
         loggers.append(wandb_logger)
 
     checkpoint_callback = ModelCheckpoint(
@@ -85,4 +88,23 @@ def main():
                              SplitProgressBar()],
                          )
 
-    trainer.fit(model, ckpt_path=ckpt_path)
+    Config.Model.Decoder.thr = 0.85
+    Config.Model.Decoder.itr = 20
+    Config.Model.Decoder.num_points = 100_000
+    # model = Model(Config.Model)
+
+    model = Model.load_from_checkpoint(ckpt_path, config=Config.Model)
+    trainer.validate(model)
+    # Config.Model.Decoder.thr = 0.75
+    # Config.Model.Decoder.itr = 20
+    # model = Model(Config.Model)
+    # trainer.validate(model, ckpt_path=ckpt_path)
+    # Config.Model.Decoder.thr = 0.8
+    # Config.Model.Decoder.itr = 20
+    # model = Model(Config.Model)
+    # trainer.validate(model, ckpt_path=ckpt_path)
+    # Config.Model.Decoder.thr = 0.85
+    # Config.Model.Decoder.itr = 20
+    # model = Model(Config.Model)
+    # trainer.validate(model, ckpt_path=ckpt_path)
+

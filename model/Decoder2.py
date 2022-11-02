@@ -1,7 +1,5 @@
 import torch
-from torch import enable_grad
 from torch.nn import BCEWithLogitsLoss
-from torch.optim import Adam
 from configs import Config
 from utils.sgdiff import DifferentiableSGD
 

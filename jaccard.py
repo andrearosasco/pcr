@@ -22,8 +22,12 @@ from torchmetrics import MeanMetric
 
 
 def main():
+    # id = '1m5301hl'
+    # ckpt = f'model-{id}:v53'
+    # project = 'pcr-grasping'
+
     id = '1m5301hl'
-    ckpt = f'model-{id}:v53'
+    ckpt = f'model-{id}:v69'
     project = 'pcr-grasping'
 
     ckpt_path = f'artifacts/{ckpt}/model.ckpt' if os.name != 'nt' else \
@@ -54,11 +58,11 @@ def main():
         partial, ground_truth = data
         partial, ground_truth = partial.cuda(), ground_truth.cuda()
 
-        reconstruction, probailities = model(partial, num_points=400_000)
+        # reconstruction, probailities = model(partial, num_points=200_000)
 
-        # aux, _ = model(partial, num_points=200_000)
-        # point_idx = farthest_point_sampler(aux, 8192 * 2)
-        # reconstruction = aux[torch.arange(point_idx.shape[0]).unsqueeze(-1), point_idx]
+        aux, _ = model(partial)
+        point_idx = farthest_point_sampler(aux, 8192 * 2)
+        reconstruction = aux[torch.arange(point_idx.shape[0]).unsqueeze(-1), point_idx]
 
         grid1 = voxelize_pc(reconstruction, 0.025)
         grid2 = voxelize_pc(ground_truth, 0.025)

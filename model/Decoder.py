@@ -5,10 +5,13 @@ from torch.optim import Adam
 from configs import Config
 
 class Decoder:
-    def __init__(self, sdf, num_points, thr, itr):
-        self.num_points = num_points
-        self.thr = thr
-        self.itr = itr
+    def __init__(self, sdf):
+        self.num_points = Config.Model.Decoder.num_points
+        if not isinstance(Config.Model.Decoder.thr, list):
+            self.thr = [Config.Model.Decoder.thr, 1.0]
+        else:
+            self.thr = Config.Model.Decoder.thr
+        self.itr = Config.Model.Decoder.itr
 
         self.sdf = sdf
 
@@ -31,8 +34,9 @@ class Decoder:
                 results = self.sdf(refined_pred, fast_weights)
 
                 for i in range(batch_size):
-                    points = refined_pred[i].detach().clone()[(torch.sigmoid(results[i]).squeeze() >= self.thr), :]
-                    preds = torch.sigmoid(results[i]).detach().clone()[torch.sigmoid(results[i]).squeeze() >= self.thr]
+                    idxs = ((torch.sigmoid(results[i]).squeeze() >= self.thr[0]) & (torch.sigmoid(results[i]).squeeze() <= self.thr[1]))
+                    points = refined_pred[i].detach().clone()[idxs, :]
+                    preds = torch.sigmoid(results[i]).detach().clone()[idxs]
                     new_points[i] += [torch.cat([points, preds], dim=1)]
 
                 gt = torch.ones_like(results[..., 0], dtype=torch.float32)

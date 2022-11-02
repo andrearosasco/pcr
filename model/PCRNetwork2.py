@@ -4,7 +4,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 
-from datasets.GraspingDatasetNoise import GraspingDataset
+from datasets.GraspingDataset import GraspingDataset
 from utils.metrics import chamfer_batch_pc
 from .Backbone import BackBone
 from .Decoder import Decoder
@@ -27,7 +27,7 @@ from torchmetrics import Accuracy, Precision, Recall, MeanMetric
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from utils.misc import sample_point_cloud_pc
+from utils.misc import sample_point_cloud_pc, voxelize_pc
 import pytorch_lightning as pl
 import wandb
 
@@ -38,7 +38,7 @@ class PCRNetwork(pl.LightningModule, ABC):
         super().__init__()
         self.backbone = BackBone(config)
         self.sdf = ImplicitFunction(config)
-        self.decoder = Decoder(self.sdf, 8192*2, 0.7, 20) #  8192*2, 0.7, 20
+        self.decoder = Decoder(self.sdf) #  8192*2, 0.7, 20
 
         # self.apply(self._init_weights)
         for parameter in self.backbone.transformer.parameters():
@@ -54,8 +54,8 @@ class PCRNetwork(pl.LightningModule, ABC):
 
         self.metrics = {
             'train': m,
-            'val_models': {**copy.deepcopy(m), **{'chamfer': MeanMetric().cuda()}},
-            'val_views': {**copy.deepcopy(m), **{'chamfer': MeanMetric().cuda()}}
+            'val_models': {**copy.deepcopy(m), **{'chamfer': MeanMetric().cuda(), 'jaccard': MeanMetric().cuda()}},
+            'val_views': {**copy.deepcopy(m), **{'chamfer': MeanMetric().cuda(), 'jaccard': MeanMetric().cuda()}}
         }
 
         self.training_set, self.valid_set_models, self.valid_set_views = None, None, None
@@ -84,10 +84,11 @@ class PCRNetwork(pl.LightningModule, ABC):
         # self.training_set = Dataset(Config, mode=f"{Config.Data.mode}/train")
         # self.valid_set = Dataset(Config, mode=f"{Config.Data.mode}/valid")
         root = Config.Data.dataset_path
-        split = 'data/MCD/build_datasets/grasping_dataset.json'
+        split = 'data/MCD/build_datasets/train_test_dataset.json'
 
         self.training_set = GraspingDataset(root, split, subset='train_models_train_views')
         # self.valid_set_models = GraspingDataset(root, split, subset='train_models_train_views', length=8)
+        # self.valid_set_models = GraspingDataset(root, split, subset='valid_models_valid_views')
         self.valid_set_models = GraspingDataset(root, split, subset='holdout_models_holdout_views', length=3200)
         # self.valid_set_views = GraspingDataset(root, split, subset='train_models_holdout_views')
 
@@ -122,8 +123,8 @@ class PCRNetwork(pl.LightningModule, ABC):
 
         return dl2
 
-    def forward(self, partial, num_points):
-        decoder = Decoder(self.sdf, num_points, 0.7, 20)
+    def forward(self, partial):
+        decoder = Decoder(self.sdf)
         fast_weights, _ = self.backbone(partial)
         pc, prob = decoder(fast_weights)
 
@@ -193,7 +194,7 @@ class PCRNetwork(pl.LightningModule, ABC):
 
     @torch.no_grad()
     def on_validation_epoch_start(self):
-        self.random_batch = np.random.randint(1, int(len(self.valid_set_models) / Config.Data.Eval.mb_size))
+        self.random_batch = np.random.randint(1, int(len(self.valid_set_models) / Config.Eval.mb_size))
         self.val_outputs = {}
 
         for m in self.metrics['val_models'].values():
@@ -204,12 +205,6 @@ class PCRNetwork(pl.LightningModule, ABC):
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         partial, ground_truth = batch
-        # We always validate on the small valid_set
-
-        # We validate on the big valid_set once every 10 epochs
-        # Still we log a random and a fixed reconstruction from the
-        # big dataset every epoch.
-            # Sample one fixed and one random batch for point cloud logging
 
         if 0 == batch_idx or batch_idx == self.random_batch:
             samples2, occupancy2 = sample_point_cloud_pc(ground_truth,
@@ -258,8 +253,11 @@ class PCRNetwork(pl.LightningModule, ABC):
         #             fast_weights = optim.step()
         #             fast_weights = [[fast_weights[i], fast_weights[i + 1], fast_weights[i + 2]] for i in
         #                             range(0, 3 * (Config.Model.depth + 2), 3)]
-
+        from dgl.geometry import farthest_point_sampler
         pc1, _ = self.decoder(fast_weights)
+        point_idx = farthest_point_sampler(pc1, 8192*2)
+        pc1 = pc1[torch.arange(point_idx.shape[0]).unsqueeze(-1), point_idx]
+
         # fp_idxs = fp_sampling(pc1[0:2], 1024)
         # fp_pc1 = pc1[0:2][torch.arange(fp_idxs.shape[0]).unsqueeze(-1), fp_idxs.long(), :]
         # vx_pc1 = voxel_downsample(pc1, 0.005)
@@ -285,10 +283,15 @@ class PCRNetwork(pl.LightningModule, ABC):
         metrics['chamfer'](chamfer_batch_pc(pc1, ground_truth))
         metrics['recall'](pred, trgt), metrics['f1'](pred, trgt)
         metrics['loss'](loss)
+        grid1 = voxelize_pc(pc1, 0.025)
+        grid2 = voxelize_pc(ground_truth, 0.025)
+        jaccard = torch.sum(grid1 * grid2, dim=[1, 2, 3]) / torch.sum((grid1 + grid2) != 0, dim=[1, 2, 3])
+
+        metrics['jaccard'](jaccard)
 
     @torch.no_grad()
     def validation_epoch_end(self, output):
-
+        # self.log(f'val_models/jaccard', self.metrics['val_models']['jaccard'].compute())
         for k, m in self.metrics['val_models'].items():
             self.log(f'val_models/{k}', m.compute())
 

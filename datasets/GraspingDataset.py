@@ -38,7 +38,9 @@ class GraspingDataset(Dataset):
             self.length = len(self.data[subset])
         else:
             self.length = length
-        np.random.shuffle(self.data[subset])
+        #
+        # np.random.seed(2021)
+        # np.random.shuffle(self.data[subset])
 
     def __len__(self):
         return self.length
@@ -60,8 +62,8 @@ class GraspingDataset(Dataset):
         mesh = TriangleMesh(vertices=Vector3dVector(vertices), triangles=Vector3iVector(triangles))
         complete = np.array(mesh.sample_points_uniformly(8192 * 2).points)
 
-        # partial = np.load(self.root / (partial_path + 'partial.npy'))
-        partial = np.array(read_point_cloud((self.root / (partial_path + 'pc.pcd')).as_posix()).points)
+        partial = np.load(self.root / (partial_path + 'partial.npy'))
+        # partial = np.array(read_point_cloud((self.root / (partial_path + 'pc.pcd')).as_posix()).points)
         partial = partial + np.array([0, 0, -1])
 
         choice = np.random.permutation(partial.shape[0])

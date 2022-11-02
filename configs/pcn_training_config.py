@@ -36,14 +36,14 @@ class Config(BaseConfig):
         mb_size = 32
 
     class Eval:
-        wandb = True
+        wandb = False
         log_metrics_every = 100
         val_every = 1
 
         grid_eval = False
         grid_res_step = 0.04
 
-        mb_size = 8
+        mb_size = 32
 
     class Data:
         dataset_path = 'data/MCD'
@@ -56,12 +56,6 @@ class Config(BaseConfig):
         n_classes = 55
         # bring the partial pcd closer to max-z (i.e. 0.5) so that the reconstruction points are in a 0.5 cube centered
         # in 0, 0, 0
-
-        class Train:
-            mb_size = 32
-
-        class Eval:
-            mb_size = 8
 
     class Model:
         knn_layer = 1
@@ -83,6 +77,11 @@ class Config(BaseConfig):
         use_object_id = False
         use_deep_weights_generator = False
         assert divmod(embed_dim, num_heads)[1] == 0
+
+        class Decoder:
+            num_points = 100_000
+            thr = 0.85
+            itr = 20
 
 if __name__ == '__main__':
     with Path('configs/__init__.py').open('w+') as f:

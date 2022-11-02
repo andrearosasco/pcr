@@ -21,7 +21,23 @@ from torch.utils.data import Dataset
 from torch.utils.data.sampler import Sampler
 import open3d as o3d
 
-patch_size = 40
+
+# class GraspingDataset(Dataset):
+#     def __init__(self, root, json_file_path, subset, length=-1):
+#         """
+#         Args:
+#         """
+#         self.root = Path('./data/valid_set')
+#
+#
+#     def __len__(self):
+#         return 3200
+#
+#     def __getitem__(self, idx):
+#         partial = np.load(self.root / f'partial_{idx:04}.npy')
+#         gt = np.load(self.root / f'gt_{idx:04}.npy')
+#
+#         return partial.astype(np.float32), gt.astype(np.float32)
 
 
 class GraspingDataset(Dataset):
@@ -63,9 +79,15 @@ class GraspingDataset(Dataset):
             vertices = match_mesh_to_partial(np.array(vertices), [y1_pose, x2_pose, y3_pose])
             mesh = TriangleMesh(vertices=Vector3dVector(vertices), triangles=Vector3iVector(triangles))
 
+            # Fix the mesh diameter to 0.25. While grasp_database meshes are already normalized to
+            #  that value, ycb diameter is variable and during the depth rendering smaller meshes
+            #  might cause empty depth images
             complete = np.array(mesh.sample_points_uniformly(8192 * 2).points)
             mesh = mesh.translate(get_bbox_center(complete)).scale(0.25 / get_diameter(complete), center=[0, 0, 0])
 
+            # The partial point cloud is extracted with a camera and the reference frame is translated
+            #  back to the object. If the depth was empty we move the camera closer. If it doesn't work we
+            #  sample a new object
             partial = mesh_to_partial(mesh)
             if partial is None:
                 partial = mesh_to_partial(mesh, dist=0.4)
@@ -86,21 +108,13 @@ class GraspingDataset(Dataset):
 
         center = get_bbox_center(partial)
         diameter = get_diameter(partial - center)
-        offset = np.array([0, 0, 0.5 - ((partial - center) / diameter * 0.7)[np.argmax(((partial - center) / diameter * 0.7)[..., 2])][..., 2]])
+        offset = np.array([0, 0, 0.5 - ((partial - center) / diameter * 0.7)[
+            np.argmax(((partial - center) / diameter * 0.7)[..., 2])][..., 2]])
 
-        complete, partial = ((complete - center) / diameter * 0.7) - offset, ((partial - center) / diameter * 0.7) - offset
+        complete, partial = ((complete - center) / diameter * 0.7) - offset, (
+                    (partial - center) / diameter * 0.7) - offset
 
         return partial.astype(np.float32), complete.astype(np.float32)
-
-    def get_item_name(self, string):
-        string = string[:-6]
-        string_list = string.split("/")
-        idx = -1
-        for i, j in enumerate(string_list):
-            if j == "ycb" or j == "grasp_database":
-                idx = i
-        return string_list[idx + 1] + string_list[-1]
-
 
 
 def mesh_to_partial(mesh, dist=-1):
@@ -150,27 +164,14 @@ def mesh_to_partial(mesh, dist=-1):
     return np.array(partial_pcd.points)
 
 
-
 def get_bbox_center(pc):
     center = pc.min(0) + (pc.max(0) - pc.min(0)) / 2.0
     return center
 
+
 def get_diameter(pc):
     diameter = np.max(pc.max(0) - pc.min(0))
     return diameter
-
-
-class deterRandomSampler(Sampler):
-    def __init__(self, data_source, seed):
-        self.data_source = data_source
-        self.seed = seed
-
-    def __iter__(self):
-        tc.manual_seed(self.seed)
-        return iter(tc.randperm(len(self.data_source)).tolist())
-
-    def __len__(self):
-        return len(self.data_source)
 
 
 def correct_pose(pose):
@@ -233,24 +234,18 @@ def match_mesh_to_partial(vertices, pose):
     return pc
 
 
-
 if __name__ == '__main__':
+    from open3d.visualization import draw_geometries
+
     root = 'data/MCD'
     split = 'data/MCD/build_datasets/train_test_dataset.json'
 
-    training_set = GraspingDataset(root, split, subset='train_models_train_views')
-    for data in tqdm.tqdm(training_set):
-        if data is None:
-            continue
+    training_set = GraspingDataset(root, split, subset='train_models_train_views', length=3200)
+    Path('./valid_set').mkdir()
+    for i, data in enumerate(tqdm.tqdm(training_set)):
         x, y = data
-
-        a = PointCloud(points=Vector3dVector(x))
-        a.paint_uniform_color([1, 0, 0])
-
-        b = PointCloud(points=Vector3dVector(y))
-        b.paint_uniform_color([1, 1, 0])
+        np.save(f'partial_{i:04}', x)
+        np.save(f'gt_{i:04}', y)
 
 
-        print()
-        draw_geometries([a, b, TriangleMesh.create_coordinate_frame(), create_cube()])
 
